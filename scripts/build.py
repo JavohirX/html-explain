@@ -17,6 +17,8 @@ Usage:  python build.py <pages-folder> [--force]
    with what it is: "6-8 DECIDED", "6-6 RULES what every setting declares", "4-6 OVERVIEW <job>".
    Pictures also get a key under them: what each colour and line style used in them means.
    See enumerate_page().
+   Before numbering, every <pre class="code" data-lang="..."> gets its code colors (color_pages);
+   after it, every <b class="red"> is listed in a "Don't miss" box at the top (dontmiss).
 6. Rewrites the sidebar page list between <!-- nav --> and <!-- /nav --> in every page,
    listing all pages that carry <meta name="explainer" content="ORDER|Label">, numbered 01, 02, ...
 """
@@ -389,6 +391,126 @@ def summarize(folder: Path):
             print(f"summary  {page.name}")
 
 
+# ------------------------------------------------------------------------------------------
+# Code colors. Every <pre class="code" data-lang="..."> is colored from its plain text, so
+# rebuilding is safe: old color spans are stripped first. Don't put markup inside a code block.
+# python, toml, sql: Pygments. shell: "> " or "$ " starts a command; if a block has no prompt,
+# every line is a command; other lines are output, left plain. tree: a folder tree, with each
+# line's description (after two or more spaces) muted. text: no colors.
+# ------------------------------------------------------------------------------------------
+CODE = re.compile(r'<pre class="code"(?: data-lang="([a-z]+)")?>(?:<code>)?(.*?)(?:</code>)?</pre>', re.S)
+PYGMENTS_LANGS = {"python", "toml", "sql"}
+CODE_LANGS = PYGMENTS_LANGS | {"shell", "tree", "text"}
+
+
+def _shell_command(cmd: str) -> str:
+    out, first = [], True
+    for tok in re.findall(r'"[^"]*"|\'[^\']*\'|#.*$|\s+|[^\s"\']+', cmd):
+        e = html.escape(tok, quote=False)
+        if tok.isspace():
+            out.append(e)
+        elif tok.startswith("#"):
+            out.append(f'<span class="c">{e}</span>')
+        elif tok[0] in "\"'":
+            out.append(f'<span class="s">{e}</span>')
+        elif first:
+            out.append(f'<span class="cmd">{e}</span>')
+            first = False
+        elif tok.startswith("-"):
+            out.append(f'<span class="fl">{e}</span>')
+        else:
+            out.append(e)
+    return "".join(out)
+
+
+def color_code(lang: str, text: str) -> str:
+    if lang in PYGMENTS_LANGS:
+        from pygments import highlight
+        from pygments.formatters import HtmlFormatter
+        from pygments.lexers import get_lexer_by_name
+        return highlight(text, get_lexer_by_name(lang), HtmlFormatter(nowrap=True)).rstrip("\n")
+    lines = text.split("\n")
+    if lang == "shell":
+        prompted = any(re.match(r"(> |\$ )", ln) for ln in lines)
+        out = []
+        for ln in lines:
+            m = re.match(r"(> |\$ )(.*)$", ln)
+            if m:
+                out.append(f'<span class="gp">{html.escape(m.group(1), quote=False)}</span>' + _shell_command(m.group(2)))
+            elif not prompted and ln.strip():
+                out.append(_shell_command(ln))
+            else:
+                out.append(html.escape(ln, quote=False))
+        return "\n".join(out)
+    if lang == "tree":
+        out = []
+        for ln in lines:
+            m = re.match(r"^(.*?\S)(\s{2,})(\S.*)$", ln)
+            out.append(html.escape(ln, quote=False) if not m else
+                       html.escape(m.group(1) + m.group(2), quote=False) + f'<span class="c">{html.escape(m.group(3), quote=False)}</span>')
+        return "\n".join(out)
+    return html.escape(text, quote=False)
+
+
+def color_pages(folder: Path):
+    for _, _, page in ordered_pages(folder):
+        text = page.read_text(encoding="utf-8")
+
+        def one(m):
+            lang, body = m.group(1), m.group(2)
+            line = text.count("\n", 0, m.start()) + 1
+            if lang not in CODE_LANGS:
+                print(f"WARNING  {page.name}:{line}: a code block without data-lang "
+                      f"({', '.join(sorted(CODE_LANGS))}): no colors")
+                return m.group(0)
+            plain = html.unescape(re.sub(r"<[^>]+>", "", body))
+            return f'<pre class="code" data-lang="{lang}"><code>{color_code(lang, plain)}</code></pre>'
+
+        new = CODE.sub(one, text)
+        if new != text:
+            page.write_text(new, encoding="utf-8")
+            print(f"code     {page.name}")
+
+
+# ------------------------------------------------------------------------------------------
+# "Don't miss": every <b class="red"> on a page is listed in a box at the top, with the number
+# of the block it sits in, so a red fact can't be scrolled past. The box goes between
+# <!-- dontmiss --> and <!-- /dontmiss -->; build.py adds the marker under the summary (or
+# above the first section) when a page has none. Runs after the numbers are written.
+# ------------------------------------------------------------------------------------------
+DONTMISS = re.compile(r"(<!-- dontmiss -->)(.*?)(<!-- /dontmiss -->)", re.S)
+RED = re.compile(r'<b class="red">(.*?)</b>', re.S)
+
+
+def dontmiss(folder: Path):
+    for _, _, page in ordered_pages(folder):
+        text = page.read_text(encoding="utf-8")
+        body = DONTMISS.sub("", text)
+        items = []
+        for m in RED.finditer(body):
+            before = body[:m.start()]
+            nums = re.findall(r'<span class="num">([0-9-]+)</span>', before)
+            sec = re.findall(r'<section id="([^"]+)"', before)
+            ref = nums[-1] if nums else "?"
+            link = f'<a href="#{sec[-1]}">{ref}</a>' if sec else ref
+            items.append(f"    <li>{link} · {m.group(1).strip()}</li>")
+        if not DONTMISS.search(text):
+            if not items:
+                continue
+            marker = "<!-- dontmiss --><!-- /dontmiss -->"
+            if "<!-- /summary -->" in text:
+                text = text.replace("<!-- /summary -->", "<!-- /summary -->\n" + marker, 1)
+            else:
+                text = text.replace("<section", marker + "\n\n<section", 1)
+        block = ("" if not items else
+                 '\n<div class="dontmiss" id="dontmiss">\n  <span class="eyebrow">Don\'t miss</span>\n'
+                 '  <ul class="tight">\n' + "\n".join(items) + "\n  </ul>\n</div>\n")
+        new = DONTMISS.sub(lambda m: m.group(1) + block + m.group(3), text)
+        if new != page.read_text(encoding="utf-8"):
+            page.write_text(new, encoding="utf-8")
+            print(f"red      {page.name}: {len(items)} to not miss")
+
+
 NAV = re.compile(r"(<!-- nav -->)(.*?)(<!-- /nav -->)", re.S)
 
 
@@ -418,8 +540,10 @@ def main():
     sync_css(folder)
     render(folder, "--force" in sys.argv)
     inline(folder)
+    color_pages(folder)
     summarize(folder)
     enumerate_pages(folder)
+    dontmiss(folder)
     nav(folder)
     print("done")
 

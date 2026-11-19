@@ -142,11 +142,13 @@ The user answers pages by number ("5-6-5 ok", "9-2 no") instead of quoting text,
   - `--text` #111111
   - `--muted` #6B6358 (small labels and captions)
   - `--accent` #B4531A (the only accent: links and "ask now" tags)
+- **Plus red, for one job:** `--red` #C4161C, only as `<b class="red">` (see **Bold and red** under Writing).
+- **Plus 3 code colors, only inside code blocks:** `--code-kw` #1F4F8F (keywords, flags), `--code-str` #2E6B34 (strings), `--code-num` #7A3E9D (numbers). Comments use `--muted`, and function names and commands are bold. `build.py` writes them; see `pre.code` below.
 - **4 sizes:** 34 (h1), 22 (h2), 16 (everything read, including h3), 13 (labels, captions, sidebar, table headers).
 - **2 weights:** 400 and 700. The only exception is Unbounded headings at 600.
 - **3 fonts, each with one job:** Unbounded for h1 and h2 only, Open Sans for all other text, Cousine for `<code>` only.
 - **Sharp corners everywhere.** No border-radius.
-- **No tiny decorative touches:** no accent bars on the edges of boxes or links, no pills, no colored tag backgrounds, no emoji. Emphasis comes from a filled `--tint` block, bold text, or position.
+- **No tiny decorative touches:** no accent bars on the edges of boxes or links, no pills, no colored tag backgrounds, no emoji. Emphasis comes from a filled `--tint` block, bold text, or position, and red only for what must never be missed.
 - **Light theme only.** Never reuse the project's app or brand theme.
 
 **Layout:**
@@ -167,7 +169,8 @@ The user answers pages by number ("5-6-5 ok", "9-2 no") instead of quoting text,
 | `.limits` with `.limit` | what goes wrong: the problem in `.l` (bold), then the concrete scenario or what we do in `.r`. Usually `data-role="problems"` |
 | `.table-box` with `<table>` | tables; `td.k` for a bold first column; `data-role="table"` and a `data-name` that says what one row is |
 | `figure` with `.fig-box` and `figcaption` | diagrams; type, job and key come from the plan's `figures` |
-| `figure` > `.fig-box` > `pre.code` | a short code sketch, only when the reader truly needs to see code; always with a figcaption, `data-role="code"` and a `data-name` |
+| `figure` > `.fig-box` > `pre.code` | a short code sketch, only when the reader truly needs to see code; always with a figcaption, `data-role="code"` and a `data-name`. Every block names its language: `<pre class="code" data-lang="python"><code>…</code></pre>`, with `python`, `toml`, `sql`, `shell` (a line starting with `> ` or `$ ` is a command, other lines are its output), `tree` (a folder tree: each line's description after two spaces is muted) or `text` (no colors). `build.py` colors it; put no markup inside. Code and its output are two blocks in one `.fig-box` (a line divides them) |
+| `b.red` | a fact that must never be missed (see **Bold and red**). `build.py` also lists every one in a "Don't miss" box at the top of the page |
 | `details.fn` | a footnote: `<details class="fn"><summary>What's X?</summary><div><p>…</p></div></details>`, placed right after the paragraph it explains (never inside a `<p>`), or inside an `li` or a `.limit` after its text. As a section's direct child it gets its own reference number, so the user can say "4-3 still unclear". Also used for check questions: the summary is "Check: …?" and the body is the answer |
 | `ol.steps`, `ul.tight` | lists |
 | `.eyebrow` | the small label above each h2 ("2 · VOCABULARY") |
@@ -248,6 +251,16 @@ The user's model is building a house in a jungle. It's getting dark and bamboo i
 
 Bad: "Without the contract, the engine (Monday) and the gather step that fills its basket (Tuesday) get written on different days against different ideas of the basket."
 Good: "On Monday we write the calculator. On Tuesday we write the code that fills its basket. If nobody wrote down what goes in the basket, Tuesday's basket won't fit Monday's calculator."
+
+**Bold and red.** Formatting steers the eye, so it only works when it's rare. The user asked for both.
+- **Bold (`<b>`) marks the words a reader must not skim past:**
+  - A new term, once, where it's explained ("Programmers call this a **snapshot**"). These are the terms in the chapter's plan.
+  - The word or number that carries a sentence's point, when skimming would lose it: "the engine asks the database **nothing**", "**only** the manager's decision changes a price", "**4 241.25 ₸**, not rounded".
+  - At most one bold phrase per paragraph, in about one paragraph out of three. A few words, never a whole sentence. If everything is bold, nothing is.
+  - Not in captions, labels or footnote summaries: they have their own style.
+- **Red (`<b class="red">`) is for a fact the user must never miss, not even once:** if they miss it, it will cause real damage (lost money, lost or leaked data, a password in git, work thrown away, a broken price going out to the company), or it is causing that damage already. "Important" isn't enough: red marks a trap. Most pages have none, and that's correct.
+  - Write the red words so they read alone, because `build.py` copies each one into the "Don't miss" box at the top, next to its block number: "**the password goes only in .env, never in a file git keeps**".
+  - Red is always bold. Never red for emphasis, warnings that cost nothing, or a chapter's problem story (Svetlana's 0.05 % mistake is the story, not a trap for the reader).
 
 **Numbers, examples, pictures.**
 - **Numbers.** Every chapter carries real numbers from the project. Not "the price goes up" but "522 ₽ becomes 10 620 ₸". Write out the arithmetic when it's short: "522 × 6.5 = 3 393".

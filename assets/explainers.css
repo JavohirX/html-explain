@@ -1,5 +1,6 @@
 /* Explainer pages. A deliberately small system:
-   7 colors · 4 sizes (34 / 22 / 16 / 13) · 2 weights (400 / 700)
+   7 colors, plus red for what must never be missed and 3 code colors used only inside code blocks
+   4 sizes (34 / 22 / 16 / 13) · 2 weights (400 / 700)
    Unbounded = page and section titles only · Open Sans = everything else · Cousine = code only.
    Layout: navigation and controls live in the left sidebar; the right column is only for reading.
    One width for everything in the reading column (800px): text, notes, cards, tables, figures. */
@@ -11,6 +12,10 @@
   --text:#111111;    /* all body text */
   --muted:#6B6358;   /* small labels, captions, secondary text */
   --accent:#B4531A;  /* the only accent: links, current page, highlights */
+  --red:#C4161C;     /* only b.red: a fact that causes real damage if missed (SKILL.md, Writing) */
+  --code-kw:#1F4F8F; /* code only: keywords, flags */
+  --code-str:#2E6B34;/* code only: strings */
+  --code-num:#7A3E9D;/* code only: numbers */
   --xl:34px;--l:22px;--m:16px;--s:13px;
   /* aliases so older markup keeps working */
   --t2:var(--muted);--t3:var(--muted);
@@ -25,6 +30,7 @@ h2{font-size:var(--l)}
 h3{font-size:var(--m);font-weight:700;line-height:1.4;margin:0}
 p{margin:0}
 b,strong{font-weight:700}
+b.red,strong.red{color:var(--red)}
 a{color:var(--accent)}
 code{font-family:Cousine,ui-monospace,Consolas,monospace;font-size:.9em;background:var(--tint);padding:0 4px}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -57,6 +63,9 @@ footer{padding-top:56px}
 
 /* the summary at the top of every page, written by build.py from the plan */
 .summary{background:var(--surf);border:1px solid var(--line);padding:18px 22px;margin-top:40px;display:flex;flex-direction:column;gap:12px}
+/* "Don't miss": every b.red on the page, listed at the top by build.py */
+.dontmiss{background:var(--surf);border:1px solid var(--red);padding:16px 22px;margin-top:24px;display:flex;flex-direction:column;gap:10px}
+.dontmiss .eyebrow{color:var(--red)}
 
 /* one "highlighted text" style for every note, callout and one-liner */
 .oneliner,.note,.watch,.callout{background:var(--tint);padding:14px 18px}
@@ -123,6 +132,13 @@ pre.mermaid{margin:0;background:transparent;overflow-x:auto}
 /* code sketches: always inside figure > .fig-box, with a figcaption */
 pre.code{margin:0;font-family:Cousine,ui-monospace,Consolas,monospace;font-size:var(--s);line-height:1.6;white-space:pre;overflow-x:auto}
 pre.code code{background:none;padding:0;font-size:inherit}
+pre.code+pre.code{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+/* code colors, written by build.py (Pygments class names); every pre.code names its data-lang */
+pre.code :is(.k,.kc,.kd,.kn,.kp,.kr,.kt,.ow,.nb,.bp,.nd,.fl){color:var(--code-kw)}
+pre.code :is(.s,.s1,.s2,.sa,.sb,.sc,.sd,.se,.sh,.si,.sx,.dl){color:var(--code-str)}
+pre.code :is(.m,.mi,.mf,.mh,.mo,.il){color:var(--code-num)}
+pre.code :is(.c,.c1,.cm,.ch,.cs,.cp,.gp){color:var(--muted)}
+pre.code :is(.nf,.nc,.fm,.cmd){font-weight:700}
 
 /* footnotes: an expandable explanation right under the line that uses a term the reader may not know */
 details.fn{margin-top:-8px}
