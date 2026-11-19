@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TOPIC Explained</title>
+<meta name="explainer" content="50|TOPIC">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600&family=Open+Sans:wght@400;700&family=Cousine:wght@400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="explainers.css">
+</head>
+<body>
+<div class="layout">
+
+<!-- Left sidebar: everything you click. Nothing here is reading material. -->
+<aside class="side">
+  <div><div class="side-label">Explainers</div><!-- nav --><!-- /nav --></div>
+  <div><div class="side-label">On this page</div><nav aria-label="Sections">
+    <a href="#start">The starting point</a>
+    <a href="#p1">Problem 1: …</a>
+    <a href="#next">What's next</a>
+  </nav></div>
+  <!-- optional: short facts about the page itself
+  <div><div class="side-label">About this page</div><div class="facts-list"><span>Sources: …</span><span>Updated YYYY-MM-DD</span></div></div>
+  -->
+</aside>
+
+<!-- Reading column: one width (800px) for every element. -->
+<main class="read">
+
+<header class="hero">
+  <span class="eyebrow">Explainer · CATEGORY</span>
+  <h1>TOPIC</h1>
+  <p class="lede">Two or three sentences: what this page is about, and that it's told one problem at a time.</p>
+</header>
+
+<!-- Chapter 0: the goal, then a map of the story. -->
+<section>
+  <p class="oneliner">Goal of this page: by the end you'll know …</p>
+  <p>The running example: the one concrete thing, with its real numbers, that every chapter follows.</p>
+  <p>How the story goes: the first chapters set the scene, chapters N to M are problems with their fixes, and the last one says what comes next.</p>
+</section>
+
+<!-- The starting situation: real people, real numbers, what hurts. -->
+<section id="start">
+  <span class="eyebrow">THE STARTING POINT</span>
+  <h2>The world before the thing exists</h2>
+  <p>The concrete situation, in plain words.</p>
+  <p class="note">Bridge: the question this raises, which the next chapter answers.</p>
+</section>
+
+<!-- One chapter per problem. Same rhythm every time: so far → problem → fix → name → check → bridge.
+     Short sentences. Real numbers. The running example in every chapter. At most 3 new terms. -->
+<section id="p1">
+  <span class="eyebrow">PROBLEM 1</span>
+  <h2>A heading that names the problem in plain words</h2>
+  <p><b>So far:</b> one line with what we have up to here, with the running example's numbers.</p>
+  <p>The first naive approach. One idea per sentence. This line uses a term the reader may not know.</p>
+  <details class="fn"><summary>What's that term?</summary><div>
+    <p>Two to five sentences explaining it, then how it applies in our case. The story must read fine with this closed.</p>
+  </div></details>
+  <div class="limits">
+    <div class="limit"><p class="l">What goes wrong.</p><p class="r">A concrete scenario with real names and numbers.</p></div>
+  </div>
+  <p>The fix:</p>
+  <ol class="steps">
+    <li>Step one of the fix, in plain words.</li>
+  </ol>
+  <figure>
+    <div class="fig-box"><!-- d2:NAME "One sentence saying what the diagram shows." --><!-- /d2 --></div>
+    <figcaption>What to notice in the diagram.</figcaption>
+  </figure>
+  <p class="small">Optional: the name programmers use for this idea, only after it's been explained.</p>
+  <details class="fn"><summary>Check: a "why?" or "what happens if…?" question with numbers from the running example</summary><div>
+    <p>The answer, in two to four short sentences.</p>
+  </div></details>
+  <p class="note">Bridge: the next problem this fix leads to.</p>
+</section>
+
+<!-- The end: where this leaves us, and what comes next and why. -->
+<section id="next">
+  <span class="eyebrow">WHAT'S NEXT</span>
+  <h2>Where this leaves us</h2>
+  <p>The result, and the next step with the reason it comes next.</p>
+</section>
+
+<!-- Sequence diagram (optional). Delete the Mermaid scripts below if the page has none.
+<figure><div class="fig-box"><pre class="mermaid">
+sequenceDiagram
+  participant A as App
+  participant B as Backend
+  A->>B: request
+</pre></div><figcaption>…</figcaption></figure>
+-->
+
+<footer>Sources: every document or page the facts came from.</footer>
+</main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({startOnLoad: true, theme: 'base', securityLevel: 'strict',
+    themeVariables: {fontFamily: 'Open Sans, sans-serif', fontSize: '14px', primaryColor: '#F2EBDF',
+      primaryBorderColor: '#E4DACB', primaryTextColor: '#111111', lineColor: '#6B6358',
+      noteBkgColor: '#F2EBDF', noteBorderColor: '#E4DACB', actorBkg: '#F2EBDF', actorBorder: '#B4531A',
+      signalColor: '#111111', signalTextColor: '#111111', labelBoxBkgColor: '#F2EBDF'}});
+</script>
+</body>
+</html>
