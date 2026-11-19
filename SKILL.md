@@ -12,8 +12,10 @@ The user learns new systems from these pages. **Their background:** lots of Leet
 ```
 <project>/docs/                      (or wherever the user names)
   explainers.css                     copied by build.py; never edit it per page
-  explainers.js                      copied by build.py: tests and questions answered in the page
+  explainers.js                      copied by build.py: answers, reading places, Top, the book
   topic-a.html  topic-b.html         one topic per page, lowercase file names
+  map.json                           the project's map: every part, its status and date (you write it)
+  index.html                         the book, written by build.py: every page and the map in one file
   diagrams/
     _theme.d2                        copied by build.py
     NAME.d2                          diagram source (the part you write)
@@ -23,12 +25,12 @@ The user learns new systems from these pages. **Their background:** lots of Leet
 Skill assets:
 - `assets/template.html`: the page skeleton. Always start from it.
 - `assets/explainers.css`: the whole design system.
-- `assets/explainers.js`: answers in the page, remembered per page in the browser (see **Tests and questions in the page**).
+- `assets/explainers.js`: answers in the page, remembered per page in the browser (see **Tests and questions in the page**), the reading place, the Top button, and the book and its map (see **The book and the map**).
 - `assets/theme.d2`: diagram classes.
 - `assets/fonts/`: the fonts D2 embeds in diagrams.
 
 Scripts:
-- `scripts/build.py <folder>`: copies the stylesheet, renders diagrams, inlines them into the pages, writes each page's summary from its plan and checks the plan's rules, numbers everything, and rewrites the sidebar page list.
+- `scripts/build.py <folder>`: copies the stylesheet, renders diagrams, inlines them into the pages, writes each page's summary from its plan and checks the plan's rules, numbers everything, rewrites the sidebar page list, checks `map.json`, and writes the book (`index.html`).
 - `scripts/check.py <page> <out>`: takes one set of screenshots.
 - `scripts/coldread.py <page> <out>`: the cold read (step 8). Hands each chapter, with its pictures as images, to a model with no context, reads each picture alone, and writes a report to judge.
 - `scripts/pages.py`: shared by the others: page order, the plan, chapters, summaries, plain text.
@@ -119,7 +121,7 @@ The skill is a git repo (`github.com/JavohirX/html-explain`, private). Commit ch
    - **A change that runs through the whole page needs one reading rule, and the new values next to the old ones.** With the week moved two days, a note at every spot ("This Monday was Wednesday 18 November") did not fix it: 2–3 of 3 runs still flagged four spots, because the reader had to combine old day names and new dates in their head. What fixed all four (0 of 3): a note at the top that says how to read the page ("this page keeps the plan's day names; the table in chapter 3 gives each day's real date"), a «Real date» column next to the old days in that table, and the other notes pointing to the column.
    - **A picture that still shows the old value contradicts its own note** (3 of 3: page 01's map said "Engine, Mon" under a note that said Wednesday). Redraw it with the new values, and say in the note that the picture shows them.
    - **An answered question isn't a changed fact.** Replace the `question` box with a `decided` box that states the answer. A question about 40 % next to a `changed` note about 15 % read as a contradiction in 3 of 3 runs.
-9. **Report:** give the file link, then answer the user's actual question in plain words in 2–4 lines, then list any open questions the page raises. Add one line on the cold read: which chapters passed, and anything still open. Don't write a report of what you did ("I added A, B and C"). The user can't check that. Tell them what the page will teach them and where to start reading.
+9. **Report:** give the link to the page in the book (`index.html#/STEM`), say what changed on the map if anything did, then answer the user's actual question in plain words in 2–4 lines, then list any open questions the page raises. Add one line on the cold read: which chapters passed, and anything still open. Don't write a report of what you did ("I added A, B and C"). The user can't check that. Tell them what the page will teach them and where to start reading.
 
 ## Reference numbers
 
@@ -317,6 +319,54 @@ The reader answers in the page, and `assets/explainers.js` (copied by `build.py`
 - **The answer field** (`.answer-field`) takes free text: "Disagree with any decision above? Write its number and why."
 
 **Later, not built yet:** pictures the reader can click (show one layer of the map at a time, step through a timeline). Worth it for complement pictures that show a sequence.
+
+## The book and the map
+
+The user reads `index.html`, the book, not the single pages. Moving between pages there never reloads, and every page opens where the reader left it. The user asked for this because clicking between pages reloaded and always landed at the top. **Point the user to `index.html`** (or `index.html#/STEM` for one page) in reports, not to `STEM.html`.
+
+**How it works.** `build.py` copies each page's text and sidebar part into a `<template>` in `index.html`, and `explainers.js` swaps them into the view. The address says where you are: `#/map`, `#/STEM`, or `#/STEM/SECTION` for a section (it shortens to `#/STEM` after landing). So Back and Forward move between pages, and a reload stays put. Links between pages (`data-model.html#basket`) are caught and stay in the book. The single pages still work alone, with the same answers and places, and their sidebar links to "The map" in the book. **Never edit `index.html`:** it's rewritten on every build. Edit the pages and `map.json`.
+
+**What the browser remembers,** all in localStorage, so in this browser only:
+- `explainers:<file>`: the answers on that page. The same key serves the book and the single page.
+- `explainers:places`: the place on each page, as the last numbered block above the top of the screen plus the distance from it, so a place survives a rebuild that moves things around. Open footnotes are remembered too.
+- `explainers:map`: the map's view, the picked part, and the trace step.
+- `explainers:last`: the last page, so opening `index.html` with no address goes back to it.
+
+**Resetting.** **Start over** in the sidebar clears that page's answers in place, with no reload. **Forget reading places** clears the places, the map's state and the last page. **Reset map** on the map clears only the map. The **↑ Top** button shows after scrolling most of a screen down.
+
+**The map** (`map.json`, the book's first page, `#/map`) answers "how much is left?". The user felt the problems on the pages never end. The map shows they're finite: every part of the program is on it, so a new problem on a page makes a part clearer, not the list longer. It's built in HTML from the JSON, never as a hand-placed SVG. Its three views:
+- **Layers:** the parts by where they sit in the system (people and other systems, doors, approval, basic data, the engine, the platform), coloured by status, with a strip of one cell per part on top.
+- **Roadmap:** the same parts by date, with the next date marked "next up".
+- **Follow:** the running example traced part by part (Back/Next, or ← →), each step with its real numbers.
+
+A click on a part dims the parts it doesn't touch and opens its detail: what it does, the problem it removes, facts, the parts it uses and is used by, links to the pages that explain it, and what's still open.
+
+`map.json`:
+```json
+{
+  "title": "Premiera, the whole system",
+  "lede": "one paragraph under the title",
+  "statuses": {"done": "Built and tested", "now": "Being built now", "planned": "In the plan, with a date",
+               "later": "Later, not dated yet", "outside": "Outside the program"},
+  "layers": [{"id": "data", "name": "Basic data", "note": "may use the engine, Django and the database"}],
+  "milestones": [{"id": "mon23", "name": "Mon 23 Nov", "note": "the gather step: page 09"}],
+  "nodes": [{"id": "gather", "layer": "data", "status": "planned", "when": "mon23",
+             "name": "The gather step", "short": "rows in, one basket out",
+             "what": "what it does, 1-2 sentences", "why": "the problem it removes, with numbers",
+             "facts": ["Done when ..."], "uses": ["tables", "basket"],
+             "pages": [{"href": "architecture-story.html#p1", "label": "01 · Problem 1: trips to the database"}],
+             "open": ["questions not decided yet, and where they will be"]}],
+  "trace": {"name": "Follow 1.50.100", "lede": "...",
+            "steps": [{"node": "supplier-files", "text": "the running example at this part, with numbers"}]}
+}
+```
+Layers are listed top to bottom, from the people to the platform; a layer's `note` says what it may use. `outside` parts (people, other systems) need no `when`. `build.py` warns about an unknown layer, status, date or part, and a page or section link that doesn't exist.
+
+**Keep the map true.** It's only useful while it's right:
+- **When a part's status changes** (built and tested, started, dated, moved), change it in `map.json` in the same session, and rebuild.
+- **When a page explains a part,** add the page to the part's `pages`, and move answered questions out of its `open`.
+- **When a new part shows up,** add it with a layer and a date, and tell the user in the report: a new part is news, a new problem inside a part isn't.
+- Every fact on the map follows the pages and the project's plan. Take the numbers in `trace` from the pages, and check the arithmetic.
 
 ## A chapter done right
 

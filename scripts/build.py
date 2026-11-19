@@ -22,8 +22,13 @@ Usage:  python build.py <pages-folder> [--force]
    after it, every <b class="red"> is listed in a "Don't miss" box at the top (dontmiss).
 6. Rewrites the sidebar page list between <!-- nav --> and <!-- /nav --> in every page,
    listing all pages that carry <meta name="explainer" content="ORDER|Label">, numbered 01, 02, ...
+   With a map.json in the folder, the list starts with "The map".
+7. Writes index.html, the book: every page in one file, so moving between pages never reloads.
+   Each page sits in a <template>; explainers.js swaps it in and opens it where the reader left it.
+   map.json, when there is one, becomes the book's first page (checked by read_map()).
 """
 import html
+import json
 import os
 import re
 import shutil
@@ -254,7 +259,7 @@ ARIA = re.compile(r'aria-label="([^"]*)"')
 
 def inline(folder: Path):
     ddir = folder / "diagrams"
-    for page in sorted(folder.glob("*.html")):
+    for _, _, page in ordered_pages(folder):
         src = page.read_text(encoding="utf-8")
         text = LEGACY_IMG.sub(lambda m: f'<!-- d2:{m.group(1)} "{m.group(2)}" --><!-- /d2 -->', src)
 
@@ -498,7 +503,7 @@ def enumerate_page(text: str, folder: Path | None = None) -> str:
 
 
 def enumerate_pages(folder: Path):
-    for page in sorted(folder.glob("*.html")):
+    for _, _, page in ordered_pages(folder):
         src = page.read_text(encoding="utf-8")
         new = enumerate_page(src, folder)
         if new != src:
@@ -672,11 +677,135 @@ def nav(folder: Path):
         links = "\n".join(
             f'  <a href="{n}"{current if n == name else ""}>{i:02d} · {label}</a>'
             for i, (_, label, n) in enumerate(pages, start=1))
+        if (folder / "map.json").exists():
+            links = '  <a href="index.html#/map">The map</a>\n' + links
         block = f'\n<nav aria-label="Explainer pages">\n{links}\n</nav>\n'
         new = NAV.sub(lambda m: m.group(1) + block + m.group(3), text)
         if new != text:
             path.write_text(new, encoding="utf-8")
             print(f"nav      {name}")
+
+
+# ------------------------------------------------------------------------------------------
+# The book: index.html holds every page, so moving between pages never reloads. A page sits in
+# a <template data-page>: its sidebar part (.toc) and its text (.content). explainers.js swaps it
+# into <main id="book-view">. map.json, when the folder has one, is embedded for the map page.
+
+MAIN = re.compile(r'<main class="read">(.*?)</main>', re.S)
+ASIDE = re.compile(r'<aside class="side">(.*?)</aside>', re.S)
+PAGE_LIST = re.compile(r'<div><div class="side-label">Explainers</div><!-- nav -->.*?<!-- /nav --></div>', re.S)
+TITLE = re.compile(r"<title>(.*?)</title>", re.S)
+FONT_LINKS = re.compile(r'<link rel="preconnect"[^>]*>|<link href="https://fonts\.googleapis\.com[^>]*>')
+MERMAID_SRC = '<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>'
+MERMAID_INIT = re.compile(r"mermaid\.initialize\((\{.*?\})\);", re.S)
+MAP_STATUSES = ("done", "now", "planned", "later", "outside")
+
+
+def read_map(folder: Path):
+    """map.json, checked: every part has a known layer, status and date, uses known parts, and links
+    to pages (and sections) that exist. Each problem is a WARNING; the map is still used."""
+    path = folder / "map.json"
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        print(f"FAILED   map.json: {e}")
+        return None
+    texts = {p.name: p.read_text(encoding="utf-8") for _, _, p in ordered_pages(folder)}
+    layers = {layer["id"] for layer in data.get("layers", [])}
+    stones = {m["id"] for m in data.get("milestones", [])}
+    nodes = data.get("nodes", [])
+    ids = [n.get("id") for n in nodes]
+    for dup in sorted({i for i in ids if ids.count(i) > 1}):
+        print(f"WARNING  map.json: two parts have the id {dup}")
+    for st in MAP_STATUSES:
+        if st not in data.get("statuses", {}):
+            print(f'WARNING  map.json: "statuses" needs a label for "{st}"')
+    for n in nodes:
+        where = f"map.json: part {n.get('id')}"
+        if n.get("layer") not in layers:
+            print(f"WARNING  {where}: layer {n.get('layer')!r} isn't in \"layers\"")
+        if n.get("status") not in MAP_STATUSES:
+            print(f"WARNING  {where}: status {n.get('status')!r}; use one of {', '.join(MAP_STATUSES)}")
+        if n.get("status") != "outside" and n.get("when") not in stones:
+            print(f"WARNING  {where}: when {n.get('when')!r} isn't in \"milestones\"")
+        for u in n.get("uses", []):
+            if u not in ids:
+                print(f"WARNING  {where}: uses {u!r}, which isn't a part")
+        for link in n.get("pages", []):
+            file, _, anchor = link.get("href", "").partition("#")
+            if file not in texts:
+                print(f"WARNING  {where}: links to {file!r}, which isn't a page here")
+            elif anchor and f'id="{anchor}"' not in texts[file]:
+                print(f"WARNING  {where}: {file} has no section #{anchor}")
+    for s in data.get("trace", {}).get("steps", []):
+        if s.get("node") not in ids:
+            print(f"WARNING  map.json: a trace step names {s.get('node')!r}, which isn't a part")
+    return data
+
+
+def bundle(folder: Path):
+    pages = ordered_pages(folder)
+    if not pages:
+        return
+    data = read_map(folder)
+    first = pages[0][2].read_text(encoding="utf-8")
+    fonts = "\n".join(FONT_LINKS.findall(first))
+    links = ['  <a href="#/map">The map</a>'] if data else []
+    templates, mermaid = [], None
+    for i, (_, label, page) in enumerate(pages, start=1):
+        text = page.read_text(encoding="utf-8")
+        main, aside, title = MAIN.search(text), ASIDE.search(text), TITLE.search(text)
+        if main is None:
+            print(f"WARNING  {page.name}: no <main class=\"read\">, so it's left out of index.html")
+            continue
+        if 'class="mermaid"' in main.group(1):
+            found = MERMAID_INIT.search(text)
+            mermaid = found.group(1) if found else (mermaid or "{}")
+        toc = PAGE_LIST.sub("", aside.group(1)).strip() if aside else ""
+        name = html.escape(html.unescape(title.group(1).strip()) if title else label, quote=True)
+        links.append(f'  <a href="#/{page.stem}">{i:02d} · {html.escape(label)}</a>')
+        templates.append(f'<template data-page="{page.stem}" data-file="{page.name}" data-title="{name}">\n'
+                         f'<div class="toc">{toc}</div>\n<div class="content">{main.group(1)}</div>\n</template>')
+    title = html.escape(data["title"]) if data and data.get("title") else "Explainers"
+    tail = ""
+    if data:
+        blob = json.dumps(data, ensure_ascii=False, indent=1).replace("</", "<\\/")
+        tail += f'<script type="application/json" id="explainer-map">\n{blob}\n</script>\n'
+    if mermaid:
+        tail += f"{MERMAID_SRC}\n<script>mermaid.initialize(Object.assign({mermaid}, {{startOnLoad: false}}));</script>\n"
+    nl = "\n"
+    out = f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<!-- Written by build.py from the pages: edit the pages and map.json, never this file. -->
+{fonts}
+<link rel="stylesheet" href="explainers.css">
+<script src="explainers.js" defer></script>
+</head>
+<body data-book>
+<div class="layout">
+<aside class="side">
+  <div><div class="side-label">Explainers</div>
+<nav aria-label="Explainer pages">
+{nl.join(links)}
+</nav></div>
+  <div class="book-toc"></div>
+</aside>
+<main class="read" id="book-view"></main>
+</div>
+{nl.join(templates)}
+{tail}</body>
+</html>
+"""
+    path = folder / "index.html"
+    if not path.exists() or path.read_text(encoding="utf-8") != out:
+        path.write_text(out, encoding="utf-8")
+        print(f"book     index.html: {len(templates)} pages" + (" and the map" if data else ""))
 
 
 def main():
@@ -694,6 +823,7 @@ def main():
     enumerate_pages(folder)
     dontmiss(folder)
     nav(folder)
+    bundle(folder)
     print("done")
 
 
