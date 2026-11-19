@@ -2,7 +2,7 @@
 
 The plan is a JSON block in the page's <head>, written before any prose:
 
-    <script type="application/json" id="plan">
+    <script type="application/json" id="explainer-plan">
     {"example": "Европласт 1.50.100: 522 ₽ goes in, retail 10 620 ₸ comes out.",
      "chapters": {"exam": {"job": "A test case is a basket in and the ТЗ's exact numbers out.",
                            "terms": {"test case": "one input with its expected output, as on LeetCode"}}}}
@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 META = re.compile(r'<meta\s+name="explainer"\s+content="(\d+)\|([^"]+)"\s*/?>', re.I)
-PLAN = re.compile(r'<script\s+type="application/json"\s+id="plan">(.*?)</script>', re.S)
+PLAN = re.compile(r'<script\s+type="application/json"\s+id="explainer-plan">(.*?)</script>', re.S)
 CHECK = re.compile(r"^(?:\[[\d-]+\]\s*)?Check:")
 
 

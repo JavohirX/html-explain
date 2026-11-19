@@ -28,7 +28,7 @@ The writer can't un-know what they meant, so they can't judge their own chapter.
 - the previous page in full,
 - this page from the top through the chapter, without this page's summary and without the chapter's check answers.
 
-It runs `claude -p` with no tools, no CLAUDE.md, no memory and an empty working folder, 3 times per chapter. `report.md` puts the chapter's job next to what each run learned, its check answers, the terms it knew only from outside, and its assumptions and questions, grouped by reference number. A finding that repeats across runs is real.
+It runs `claude -p` with no tools, no CLAUDE.md, no memory and an empty working folder, 3 times per chapter. `repeated.md` is the one to read first: the chapter's job next to what each run learned, the check answers, and only the findings two or more runs share. `report.md` has everything: the terms each run knew only from outside, and its assumptions and questions, grouped by reference number. A finding that repeats across runs is real.
 
 The first test: the old chapter 1 of a project page framed five products as test cases but showed only outputs. None of 3 runs mentioned any input. After the rewrite, all 3 did, and the runs found two more real gaps.
 

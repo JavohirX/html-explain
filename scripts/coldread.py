@@ -16,7 +16,9 @@ finding that repeats across runs is real, a one-off may be noise.
 Writes into <out-folder>:
   bundle-ID.txt   exactly what the reader got for chapter ID
   run-ID-K.json   each answer (raw text when it wasn't valid JSON)
-  report.md       per chapter: the job from the plan (the answer key) next to the answers
+  repeated.md     read first: per chapter, the job next to what each run learned, the check
+                  answers, and only the findings two or more runs share
+  report.md       everything, per chapter, grouped by reference number
 """
 import json
 import shutil
@@ -145,6 +147,44 @@ def _items(answer, key):
     return [v for v in value if isinstance(v, dict)] if isinstance(value, list) else []
 
 
+FINDINGS = (("assumptions", "assumption", "Assumptions"),
+            ("questions", "question", "Questions for the author"),
+            ("contradictions", "issue", "Contradictions"))
+
+
+def _check_answers(answers: list, index: int) -> list[tuple[int, str]]:
+    """Each run's answer to the chapter's check question number `index`, matched by position."""
+    found = []
+    for k, a in enumerate(answers, start=1):
+        items = _items(a, "check_answers")
+        if index < len(items):
+            found.append((k, items[index].get("answer", "")))
+    return found
+
+
+def _outside(answers: list) -> dict:
+    """term -> [(run, item)] for terms a run knew only from outside knowledge."""
+    found = defaultdict(list)
+    for k, a in enumerate(answers, start=1):
+        for t in _items(a, "terms"):
+            if "outside" in str(t.get("source", "")).lower():
+                found[str(t.get("term", "")).strip().lower()].append((k, t))
+    return found
+
+
+def _by_ref(answers: list, key: str, field: str) -> list[tuple[str, list]]:
+    """[(ref, [(run, text)])], the refs flagged by the most runs first."""
+    found = defaultdict(list)
+    for k, a in enumerate(answers, start=1):
+        for item in _items(a, key):
+            found[str(item.get("ref", "")).strip() or "?"].append((k, item.get(field, "")))
+    return sorted(found.items(), key=lambda kv: (-len({k for k, _ in kv[1]}), kv[0]))
+
+
+def _runs(hits) -> int:
+    return len({k for k, _ in hits})
+
+
 def report_chapter(cid: str, info: dict, job: str, answers: list) -> list[str]:
     runs = len(answers)
     out = [f"## {info['n']} · {info['title']} (#{cid})", "", f"**Job, the answer key:** {job}", "",
@@ -158,41 +198,49 @@ def report_chapter(cid: str, info: dict, job: str, answers: list) -> list[str]:
     out += [f"{k}. {a.get('learned', '')}" for k, a in enumerate(answers, start=1) if isinstance(a, dict)]
 
     out += ["", "**Check questions:**"]
-    for q, page_answer in info["checks"]:
+    for i, (q, page_answer) in enumerate(info["checks"]):
         out.append(f"- {q}")
         out.append(f"  - page: {page_answer}")
-        for k, a in enumerate(answers, start=1):
-            for ca in _items(a, "check_answers"):
-                if ca.get("question", "").strip()[:40] in q or q[:40] in ca.get("question", ""):
-                    out.append(f"  - run {k}: {ca.get('answer', '')}")
-                    break
+        out += [f"  - run {k}: {text}" for k, text in _check_answers(answers, i)]
 
-    outside = defaultdict(list)
-    for k, a in enumerate(answers, start=1):
-        for t in _items(a, "terms"):
-            if "outside" in str(t.get("source", "")).lower():
-                outside[str(t.get("term", "")).strip().lower()].append((k, t))
+    outside = _outside(answers)
     out += ["", "**Terms it knew only from outside knowledge:**"]
     if not outside:
         out.append("- none")
-    for term, hits in sorted(outside.items(), key=lambda kv: -len(kv[1])):
+    for term, hits in sorted(outside.items(), key=lambda kv: -_runs(kv[1])):
         meanings = "; ".join(f"run {k}: {t.get('meaning', '')} [{t.get('ref', '')}]" for k, t in hits)
-        out.append(f"- **{term}**, {len({k for k, _ in hits})}/{runs} runs. {meanings}")
+        out.append(f"- **{term}**, {_runs(hits)}/{runs} runs. {meanings}")
 
-    for key, field, title in (("assumptions", "assumption", "Assumptions"),
-                              ("questions", "question", "Questions for the author"),
-                              ("contradictions", "issue", "Contradictions")):
-        by_ref = defaultdict(list)
-        for k, a in enumerate(answers, start=1):
-            for item in _items(a, key):
-                by_ref[str(item.get("ref", "")).strip() or "?"].append((k, item.get(field, "")))
+    for key, field, title in FINDINGS:
+        groups = _by_ref(answers, key, field)
         out += ["", f"**{title}, grouped by reference number:**"]
-        if not by_ref:
+        if not groups:
             out.append("- none")
-        for ref, hits in sorted(by_ref.items(), key=lambda kv: (-len({k for k, _ in kv[1]}), kv[0])):
-            out.append(f"- **{ref}**, {len({k for k, _ in hits})}/{runs} runs")
+        for ref, hits in groups:
+            out.append(f"- **{ref}**, {_runs(hits)}/{runs} runs")
             out += [f"  - run {k}: {text}" for k, text in hits]
     out.append("")
+    return out
+
+
+def repeated_chapter(cid: str, info: dict, job: str, answers: list) -> list[str]:
+    """The judge's short view: the job next to what each run learned, the check answers, and only
+    the terms, assumptions, questions and contradictions that two or more runs share."""
+    runs = len(answers)
+    out = [f"## {info['n']} · {info['title']} (#{cid})", "", f"**Job:** {job}", "", "**Learned:**"]
+    for k, a in enumerate(answers, start=1):
+        out.append(f"{k}. {a.get('learned', '')}" if isinstance(a, dict) else f"{k}. (no JSON)")
+    for i, (q, page_answer) in enumerate(info["checks"]):
+        out += ["", f"**{q}**", f"- page: {page_answer}"]
+        out += [f"- run {k}: {text}" for k, text in _check_answers(answers, i)]
+    shared = [f"- term **{term}** known only from outside, {_runs(hits)}/{runs} runs"
+              for term, hits in _outside(answers).items() if _runs(hits) >= 2]
+    for key, field, title in FINDINGS:
+        for ref, hits in _by_ref(answers, key, field):
+            if _runs(hits) >= 2:
+                shared.append(f"- {title.lower()} at **{ref}**, {_runs(hits)}/{runs} runs")
+                shared += [f"  - run {k}: {text}" for k, text in hits]
+    out += ["", "**Shared by 2+ runs:**"] + (shared or ["- nothing"]) + [""]
     return out
 
 
@@ -265,10 +313,15 @@ def main():
     lines = [f"# Cold read: {page.name}", "",
              f"Model `{model}`, {runs} runs per chapter. A finding that repeats across runs is real; "
              "a one-off may be noise. The reader can't feel overload: that stays with the term count and you.", ""]
+    short = [f"# Cold read, repeated findings: {page.name}", "",
+             f"Read this first. The full answers are in report.md. Model `{model}`, {runs} runs per chapter.", ""]
     for cid in ids:
         answers = [results[(cid, k)] for k in range(1, runs + 1)]
         lines += report_chapter(cid, bundles[cid][1], jobs[cid], answers)
+        short += repeated_chapter(cid, bundles[cid][1], jobs[cid], answers)
     (out / "report.md").write_text("\n".join(lines), encoding="utf-8")
+    (out / "repeated.md").write_text("\n".join(short), encoding="utf-8")
+    print(f"report   {out / 'repeated.md'} (read first)")
     print(f"report   {out / 'report.md'}")
 
 
