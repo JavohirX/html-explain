@@ -86,6 +86,14 @@ ul.tight,ol.steps{margin:0;padding-left:22px;display:flex;flex-direction:column;
    They replace list bullets, and a collection's own number sits on the line above it. */
 .num{font-size:var(--s);font-weight:700;color:var(--accent);margin-right:8px;white-space:nowrap;font-variant-numeric:tabular-nums}
 .num-block{display:block;margin-bottom:-12px}
+/* labels written by build.py: what each block is. "6-8 DECIDED", "6-6 RULES what every setting declares",
+   "4-6 OVERVIEW <what the picture shows>". Above a list or table, first line inside a box or figure. */
+.label-line{display:block;font-size:var(--s);line-height:1.5}
+section > .label-line{margin-bottom:-12px}
+.note > .label-line{margin-bottom:6px}
+.lbl-role{font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-right:8px}
+.lbl-text{color:var(--text)}
+.lbl-key{display:block;margin-top:6px}
 ul:has(> li > .num),ol:has(> li > .num){list-style:none;padding-left:0}
 
 /* limits: the problem in bold, then what we do about it */

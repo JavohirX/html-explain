@@ -13,7 +13,10 @@ Usage:  python build.py <pages-folder> [--force]
    <!-- summary --> and <!-- /summary -->, and checks the plan's rules: one job per chapter,
    at most 3 new terms, 1-2 check questions. Each broken rule is a WARNING line.
 5. Numbers every chapter, item and sub-item of each page (5, 5-6, 5-6-5) so the reader can
-   answer "5-6-5 ok" instead of quoting text. See enumerate_page().
+   answer "5-6-5 ok" instead of quoting text, and labels every block that isn't a plain paragraph
+   with what it is: "6-8 DECIDED", "6-6 RULES what every setting declares", "4-6 OVERVIEW <job>".
+   Pictures also get a key under them: what each colour and line style used in them means.
+   See enumerate_page().
 6. Rewrites the sidebar page list between <!-- nav --> and <!-- /nav --> in every page,
    listing all pages that carry <meta name="explainer" content="ORDER|Label">, numbered 01, 02, ...
 """
@@ -25,7 +28,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from pages import chapters, lint, ordered_pages, read_plan, summary_html
+from pages import (FIGURE_TYPES, chapters, figure_key, figure_plan, is_box, is_picture, lint, ordered_pages,
+                   read_plan, role_label, summary_html)
 
 SKILL = Path(__file__).resolve().parent.parent
 ASSETS = SKILL / "assets"
@@ -136,6 +140,28 @@ def inline(folder: Path):
 # Labels are spliced into the source at positions bs4 reports, so the rest of the file is
 # left byte for byte as written. Old labels are stripped first, so rebuilding is safe.
 NUM_SPAN = re.compile(r'<span class="num(?: num-block)?">[^<]*</span>')
+LABEL_LINE = re.compile(r'<span class="label-line">(?:<span class="[\w-]+">[^<]*</span>)*</span>')
+LABEL_PARTS = re.compile(r'<span class="lbl-(?:role|key)">[^<]*</span>')
+CLASS_USE = re.compile(r'class:\s*(\[[^\]]*\]|[\w-]+)')
+# What each theme class means, for the key under a picture. Only the classes a picture uses are
+# listed. A picture's plan entry can say what a class means in that picture: "key": {"green": "a commit"}.
+KEY = [("rust", "rust box", None), ("green", "green box", "our program"),
+       ("blue", "blue box", "another company's system"), ("bad", "red box", "a mistake, or what must not happen"),
+       ("zone", "dashed frame", "a boundary"), ("accent", "thick rust arrow", "the path to follow"),
+       ("danger", "red arrow", "what goes wrong"), ("bg", "dashed arrow", "happens later, or by itself")]
+
+
+def picture_key(d2_file: Path, entry: dict) -> str:
+    """'Key: rust box: new in this chapter · dashed arrow: …' for the classes the diagram uses."""
+    if not d2_file.exists():
+        return ""
+    used = set()
+    for m in CLASS_USE.finditer(d2_file.read_text(encoding="utf-8")):
+        used |= {c.strip() for c in m.group(1).strip("[]").split(";")}
+    own = entry.get("key", {})
+    rust = "new in this chapter" if entry.get("type") == "overview" else "what this picture is about"
+    parts = [f"{name}: {own.get(cls) or meaning or rust}" for cls, name, meaning in KEY if cls in used]
+    return "Key: " + " · ".join(parts) + "." if parts else ""
 CHAPTER_PREFIX = re.compile(r'^\s*\d+\s*·\s*')
 COLLECTION_CLASSES = {"grid", "grid2", "compare", "limits", "gloss", "table-box", "flows", "now3"}
 TRANSPARENT_CLASSES = {"qgroups"}  # its groups are numbered as items of the chapter itself
@@ -179,12 +205,18 @@ def _nested_collections(tag):
     return found
 
 
-def enumerate_page(text: str) -> str:
+def enumerate_page(text: str, folder: Path | None = None) -> str:
     try:
         from bs4 import BeautifulSoup
     except ImportError:
         print("WARNING  bs4 is not installed: pages are not numbered (pip install beautifulsoup4)")
         return text
+    try:
+        plan = read_plan(text)
+    except ValueError:
+        plan = None
+    text = LABEL_LINE.sub("", text)
+    text = LABEL_PARTS.sub("", text)
     text = NUM_SPAN.sub("", text)
     soup = BeautifulSoup(text, "html.parser")
     main = soup.find("main")
@@ -203,25 +235,51 @@ def enumerate_page(text: str) -> str:
         return m.end() if m else pos
 
     ops = []  # (start, end, replacement)
+    fig_plan: dict = {}  # the current chapter's pictures, from the plan
+
+    def esc(s):
+        return html.escape(s, quote=False)
+
+    def label_line(pos, num, label):
+        parts = f'<span class="num">{num}</span>'
+        if label:
+            role, name = label
+            parts += f'<span class="lbl-role">{esc(role)}</span>'
+            if name:
+                parts += f'<span class="lbl-text">{esc(name)}</span>'
+        ops.append((pos, pos, f'<span class="label-line">{parts}</span>'))
 
     def inline(tag, num):
-        """The label goes at the start of the element's own text."""
+        """The number goes at the start of the element's own text."""
         target = tag
+        role = ""
         if tag.name == "figure":
             target = tag.find("figcaption")
             if target is None:
                 return block(tag, num)
         elif tag.name == "details":
             target = tag.find("summary") or tag
+            if "fn" in _classes(tag) and not target.get_text().strip().startswith("Check:"):
+                role = '<span class="lbl-role">Footnote</span>'
         elif tag.name == "tr":
             target = tag.find(["td", "th"]) or tag
         pos = after_start(target)
-        ops.append((pos, pos, f'<span class="num">{num}</span>'))
+        ops.append((pos, pos, f'<span class="num">{num}</span>{role}'))
 
     def block(tag, num):
         """A collection has no text of its own, so its label is a line just above it."""
-        pos = start_of(tag)
-        ops.append((pos, pos, f'<span class="num num-block">{num}</span>'))
+        label_line(start_of(tag), num, role_label(tag))
+
+    def labelled(tag, num):
+        """A box or a figure: the label is the first line inside it. Pictures get a key in the caption."""
+        label_line(after_start(tag), num, role_label(tag, fig_plan))
+        if tag.name == "figure" and is_picture(tag) and folder is not None:
+            entry = fig_plan.get(figure_key(tag), {})
+            key = picture_key(folder / "diagrams" / f"{figure_key(tag)}.d2", entry)
+            caption = tag.find("figcaption")
+            if key and caption is not None:
+                end = text.index("</figcaption>", after_start(caption))
+                ops.append((end, end, f'<span class="lbl-key">{esc(key)}</span>'))
 
     def number_inside(tag, prefix):
         j = 0
@@ -237,6 +295,9 @@ def enumerate_page(text: str) -> str:
             for j, member in enumerate(_members(tag), start=1):
                 inline(member, f"{num}-{j}")
                 number_inside(member, f"{num}-{j}")
+        elif is_box(tag) or (tag.name == "figure" and (is_picture(tag) or tag.get("data-role"))):
+            labelled(tag, num)
+            number_inside(tag, num)
         else:
             inline(tag, num)
             number_inside(tag, num)
@@ -258,6 +319,7 @@ def enumerate_page(text: str) -> str:
                 ops.append((begin, end, f"{n} · " + CHAPTER_PREFIX.sub("", text[begin:end])))
         else:
             n = 0
+        fig_plan = figure_plan(plan, section.get("id"))
         k = 0
         for child in _kids(section):
             if child.name in ("h2", "script", "style") or _classes(child) & SKIP_CLASSES:
@@ -288,7 +350,7 @@ def enumerate_page(text: str) -> str:
 def enumerate_pages(folder: Path):
     for page in sorted(folder.glob("*.html")):
         src = page.read_text(encoding="utf-8")
-        new = enumerate_page(src)
+        new = enumerate_page(src, folder)
         if new != src:
             page.write_text(new, encoding="utf-8")
             print(f"numbers  {page.name}")

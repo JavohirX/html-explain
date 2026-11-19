@@ -28,7 +28,7 @@ Skill assets:
 Scripts:
 - `scripts/build.py <folder>`: copies the stylesheet, renders diagrams, inlines them into the pages, writes each page's summary from its plan and checks the plan's rules, numbers everything, and rewrites the sidebar page list.
 - `scripts/check.py <page> <out>`: takes one set of screenshots.
-- `scripts/coldread.py <page> <out>`: the cold read (step 8). Hands each chapter to a model with no context and writes a report to judge.
+- `scripts/coldread.py <page> <out>`: the cold read (step 8). Hands each chapter, with its pictures as images, to a model with no context, reads each picture alone, and writes a report to judge.
 - `scripts/pages.py`: shared by the others: page order, the plan, chapters, summaries, plain text.
 
 Tools: D2 (`%LOCALAPPDATA%\Programs\d2\d2.exe`, or on PATH), Python with beautifulsoup4, Playwright (Edge channel) for the check, and the `claude` CLI for the cold read. Mermaid loads from a pinned CDN.
@@ -55,38 +55,68 @@ The skill is a git repo (`github.com/JavohirX/html-explain`, private). Commit ch
      - **The check question tests the job.** Write it from the job sentence, before the prose. If the easy question to ask is about a detail, that detail is too big on the page.
    - **The running example:** one concrete thing (one product, one file, one person's day) with real numbers, followed through every chapter.
    - **New terms per chapter:** list them. At most 3 per chapter. If a chapter has more, split it or cut the terms the story doesn't need. A footnote doesn't make a term free: it still counts.
-   - **The picture per chapter:** what each chapter shows. Best is one picture that grows: the same diagram in every chapter, with the new piece in `rust`.
+   - **The pictures per chapter,** each with a type and a job (the one thing the picture alone must show):
+     - **Overview, in every chapter:** where this chapter's piece sits in the whole. It's one map per page that grows chapter by chapter: the same cells in the same places, with this chapter's new piece in `rust`. It goes near the end of the chapter, after the fix, as the "so far" picture. It never replaces the text: the text alone must still teach the chapter's job.
+     - **Illustration:** one narrow case with the running example's numbers (a timeline, one product's basket).
+     - **Complement:** something that's easier seen than read: an order, states and moves, who depends on whom. The cold read checks that it adds what the text doesn't.
    - **The check questions:** 1–2 per chapter, and their answers.
    - **Just in time:** cut anything the reader doesn't need yet. If something gets built next week, it gets one line now and its own page on the day it's built.
 3. **Copy `assets/template.html`** into the folder, and **write the plan into it before any prose**:
    - Set `<title>`: "X Explained", or the question itself.
    - Set `<meta name="explainer" content="ORDER|Label">`. Pages are listed oldest to newest, so a new page always takes the next order after the highest one in the folder (10, 20, 30…). Don't slot a new page between older ones. `build.py` numbers the sidebar 01, 02, 03… from that order, so don't put a number in the label.
-   - Fill the plan, the `<script type="application/json" id="explainer-plan">` block in the `<head>`: the running `example` in one line with its key numbers, and under `chapters` one entry per chapter `id` with its `job` and its `terms` (each new term with its meaning in one plain line). The plan is the single source: `build.py` writes the page's summary from it, and `coldread.py` uses each job as the answer key. To change the summary, change the plan.
+   - Fill the plan, the `<script type="application/json" id="explainer-plan">` block in the `<head>`: the running `example` in one line with its key numbers, and under `chapters` one entry per chapter `id` with its `job`, its `terms` (each new term with its meaning in one plain line) and its `figures`: each picture's D2 name with its `type` (`overview`, `illustration`, `complement`) and `job`, plus an optional `key` when a colour means something specific in that picture (`{"green": "a commit"}`). The plan is the single source: `build.py` writes the page's summary and every picture's label from it, and `coldread.py` uses each job as the answer key. To change the summary or a label, change the plan.
    - Fill the "On this page" links in the sidebar to match the section `id`s.
 
    **Every page has a summary at the top.** A reader can't recall a detail from a page two weeks old, but they can reread its summary in a minute. When you edit an older page that has no plan, add its plan first.
 
    **Adding a plan to an older page:** go page by page in reading order, and treat every later page as if it doesn't exist yet, because the cold read gives each page only the pages before it. Write each job from what the chapter already teaches, not from what you wish it taught. Add the missing check questions. Then build, cold-read and fix as in steps 6–8.
-4. **Write the chapters,** following **Writing** below, each one serving its job.
+4. **Write the chapters,** following **Writing** below, each one serving its job. **Every block that isn't a plain paragraph says what it is**, so the reader never has to work out whether a box is a decision, a question for them or a bridge. Give it `data-role`, and lists and tables a `data-name`; `build.py` writes the label next to the number ("6-8 QUESTION FOR SVETLANA", "6-6 RULES what every setting declares"):
+   - **Boxes** (`.note`): `decided`, `question` (with `data-who="Svetlana"`; "you" by default), `open` (decided later, and where), `changed` (see **Changed facts** in step 8), `next` (the bridge to the next problem). Don't repeat the label in the text ("Decided: …").
+   - **Lists, cards and limits:** `steps` (in order), `options` (pick one), `problems` (all at once), `rules` (all apply), `reasons`, `examples`, `parts`, `decisions`. The kind says why it's a list; the name says what its items are.
+   - **Tables:** `table`, with a name that says what one row is: "One row per day: what we build, and when the day is done".
+   - **Code sketches:** `figure data-role="code"` with a name. **Pictures** take their label from the plan ("OVERVIEW <job>"), with a colour key under the caption, made from the classes the diagram uses. Don't describe the colours in the caption too.
+   - Footnotes are labelled "Footnote" by `build.py`; check questions already start with "Check:".
 5. **Write diagrams** as `diagrams/NAME.d2` (see below). Place each one in the page as `<!-- d2:NAME "alt sentence" --><!-- /d2 -->` inside `<div class="fig-box">`. Don't put double quotes inside the alt text. Never hand-place SVG coordinates: that's what caused overlapping labels before. The alt sentence says what the picture shows: the cold reader gets only that and the words drawn in it.
-6. **Build:** `python ~/.claude/skills/html-explain/scripts/build.py <folder>`. Fix every FAILED line, and every WARNING about the page you're working on: a chapter without a job, more than 3 new terms, a chapter without 1–2 check questions.
+6. **Build:** `python ~/.claude/skills/html-explain/scripts/build.py <folder>`. Fix every FAILED line, and every WARNING about the page you're working on: a chapter without a job, more than 3 new terms, a chapter without 1–2 check questions, a chapter without an overview picture, a picture without a type and job, a box, list or table without a role.
 7. **Look once:** `python ~/.claude/skills/html-explain/scripts/check.py <page.html> <scratchpad>/check`. Read the screenshots, fix what they show in one pass, rebuild, and stop. Don't loop.
    **Then reread the text once as the user,** someone who knows only LeetCode. Mark every word they'd stop at and every sentence they'd read twice. Fix each one: explain it, split it, or cut it. Count each chapter's new terms again (3 at most).
 8. **Cold read:** `python ~/.claude/skills/html-explain/scripts/coldread.py <page.html> <scratchpad>/coldread`, then read `repeated.md` first: per chapter, the job next to what each run learned, the check answers, and only the findings two or more runs share. Open `report.md` when you need a single run's full answer.
    - **Why:** the writer can't un-know what they meant, so they fill every gap without noticing, and the word-level checks pass anyway. Chapter 1 of "Monday, part 1" framed the ТЗ's five products as test cases, then showed only outputs, counted them, and asked why one brand has 5 prices and another 4. Every sentence passed the rules. In the cold read, none of 3 runs mentioned any input, and one summed it up as "how many numbers each product has". After the rewrite, all 3 learned "a basket of inputs, and the exact numbers that must come out".
-   - **What the reader gets:** what a person would hold at that point. The summaries of the older pages, the previous page in full, and this page from the top through the chapter. It doesn't get this page's summary, because that holds the answer key, or the chapter's check answers, because it answers those itself. It runs with no tools, no CLAUDE.md, no memory and an empty folder, 3 times per chapter, and answers what it learned, the check questions, each term and where it learned it, what it assumed, and what it would ask.
+   - **What the reader gets:** what a person would hold at that point. The summaries of the older pages, the previous page in full, and this page from the top through the chapter, with the chapter's pictures as real images. It doesn't get this page's summary, because that holds the answer key, or the chapter's check answers, because it answers those itself. It runs with no tools, no CLAUDE.md, no memory and an empty folder, 3 times per chapter, and answers what it learned, the check questions, each term and where it learned it, what it assumed, what it would ask, and what each picture showed it.
+   - **Pictures get two more reads,** because you can't see whether a reader uses a picture, only what's lost without it. **Alone:** every picture by itself, with its type and colour key but not its job. **Without:** each complement picture removed from its chapter. `--text-only` skips both, for quick rereads after a text fix.
    - **Judge each chapter:**
      - **The job is learned:** each claim of the job shows up in "what it learned" in at least 2 of 3 runs. The main point is only a hint: readers tend to pick the chapter's finish line ("Monday is over when all 22 pass") as the main point.
      - **The check answers match the page's answers.** A run that says "the chapter doesn't state this, my guess is…" and guesses right still passes: a check may take one step of reasoning.
      - **No unexplained terms:** a term marked "outside knowledge" in 2 or more runs needs an explanation or a footnote. Ignore everyday words and LeetCode knowledge the user has (VAT, currency signs). If an older page explains the term but has no summary yet, add that page's plan instead.
-     - **No repeated confusion:** an assumption, question or contradiction at the same reference number in 2 or more runs is a real gap, so fix that sentence. A finding from one run only gets fixed when it's clearly right.
+     - **No repeated confusion:** an assumption, question or contradiction at the same reference number in 2 or more runs is a real gap. A finding from one run only gets fixed when it's clearly right. `repeated.md` leaves out findings at a "Next problem" box: the reader sees only up to this chapter, so the question that leads into the next one always looks unanswered.
+     - **Each picture shows its job:** read alone, the job shows up in what it "shows" in at least 2 of 3 runs. If not, redraw it. A **complement** must also add something: the chapter read without it learns the picture's job in fewer runs than the chapter read with it. If the chapter does as well without it, the picture only repeats the text: make it show what the text can't, or call it an illustration. In the first test, two of four complements taught nothing the text didn't, and both became illustrations; one now shows the real versions from the lock file.
+     - **What the pictures taught us:**
+       - **A picture alone must say what it's about.** All six readers of a proposal's stages, read alone, took it for "a blocked purchase price", because its first box said that. A title node fixed it (`near: top-center`, class `note`).
+       - **A map's labels must stay true in every chapter that shows it.** "Engine v1.3 → 10 620 ₸" sat on the map in chapters 7 and 8, while chapter 7's story has 1.3 giving 10 630. Keep chapter-specific facts off the growing map.
+       - **Draw no arrow that claims less than the text.** "git → snapshots → calculator" read as "git snapshots only the calculator", against "every file in the project". When no target is true, drop the arrow and say it in the label.
+       - **Count what the picture shows.** "Four layers" over a picture with three rows read as a contradiction in 3 of 3 runs.
+   - **Sort each repeated finding into one of four kinds,** and handle it by its kind:
+
+     | Kind | What to do |
+     |---|---|
+     | The page or the project knows the answer, but the text doesn't say it | Fix the text. This is most findings, and it's your job, not the user's. |
+     | The next chapter answers it | Nothing. |
+     | A page not yet written will decide it | An `open` box that says where it's decided, and add the question to that page's list in the project's to-do list. |
+     | Nobody has decided it, and it belongs here | A `question` box at the bottom of the chapter, with options and a default, also added to the project's to-do list. The user answers by number; then the answer goes into the text and the box goes. |
+
    - **Fix:** when the job isn't learned, rebuild the chapter from its job; don't patch words. For a repeated question or contradiction, fix the sentence it points at:
      - **State a fact, never a hedge.** "The proposal is usually replaced" made 3 of 3 runs ask "when isn't it?". "A draft, blocked or sent proposal is replaced" closed it.
      - **State the whole claim, not one example of it.** "We type 1.50.100's numbers" made 3 of 3 runs ask "what about the other four products?". "We type the five products' numbers" closed it.
      - **Fix for clarity, not with later facts.** The page answers what its own story raises. A question the next page answers gets one forward line at most ("Tuesday's page covers this"), not the answer.
      - **Check every fact you add** against the project's sources, plans and memory before it goes on the page. If the project hasn't decided it yet, don't decide it in the page: leave it and tell the user it's open.
    - **Every fix gets verified.** A round is a fix plus a rerun of only the changed chapters with `--chapter ID`. A fix can open a new question, as both examples above did before their second version. Stop after 3 rounds, and tell the user what's still open.
-   - The reader can't feel overload, so it can't tell you a chapter is too heavy. That stays with the term count and the user.
+   - The reader can't feel overload, so it can't tell you a chapter is too heavy. That stays with the term count and the user. It also knows git, Django and servers, and quietly fills gaps with that: it's an optimistic stand-in for the user, so the user's own reading stays the final check. For pictures read alone, Sonnet caught the point a little more often than Haiku (2.5 against 1.5 of 3, on one picture), but both tripped on the same flaw. So Haiku stays the default, and `--picture-model sonnet` is there for a second opinion.
+
+   **Changed facts.** Each page tells its story as of when it was written, but it must never teach a number that's no longer true. When a decision changes a fact on an older page, add a `changed` box at that spot: "On 16 November this changed. Nobody had made the fourteen extra cases, so we wrote our own. Page 06 has them." Don't rewrite the old story. Each time a decision changes, search every page for the old value (and the plans, since the summary comes from them). Three rules from the cold read:
+   - **Keep the old sentence true, and move the old fact into the note.** "Fourteen more test cases are coming", with the note right under it, read as a contradiction in 3 of 3 runs. The past tense ("the ТЗ promised fourteen more") still did in 2 of 3. What worked: the old sentence says only what's still true ("five products, 22 numbers"), and the note tells the whole change ("The ТЗ also promised fourteen more… On 16 November we learned nobody had made them…").
+   - **A change that runs through the whole page needs one reading rule, and the new values next to the old ones.** With the week moved two days, a note at every spot ("This Monday was Wednesday 18 November") did not fix it: 2–3 of 3 runs still flagged four spots, because the reader had to combine old day names and new dates in their head. What fixed all four (0 of 3): a note at the top that says how to read the page ("this page keeps the plan's day names; the table in chapter 3 gives each day's real date"), a «Real date» column next to the old days in that table, and the other notes pointing to the column.
+   - **A picture that still shows the old value contradicts its own note** (3 of 3: page 01's map said "Engine, Mon" under a note that said Wednesday). Redraw it with the new values, and say in the note that the picture shows them.
+   - **An answered question isn't a changed fact.** Replace the `question` box with a `decided` box that states the answer. A question about 40 % next to a `changed` note about 15 % read as a contradiction in 3 of 3 runs.
 9. **Report:** give the file link, then answer the user's actual question in plain words in 2–4 lines, then list any open questions the page raises. Add one line on the cold read: which chapters passed, and anything still open. Don't write a report of what you did ("I added A, B and C"). The user can't check that. Tell them what the page will teach them and where to start reading.
 
 ## Reference numbers
@@ -94,7 +124,7 @@ The skill is a git repo (`github.com/JavohirX/html-explain`, private). Commit ch
 The user answers pages by number ("5-6-5 ok", "9-2 no") instead of quoting text, so every page carries one numbering with dashes, never dots. `build.py` writes the numbers; don't type them yourself.
 
 - **Chapter:** each `<section>` with an `h2`, counted from 1. Its eyebrow becomes "5 · LABEL", and its "On this page" link becomes "5 · Label". The intro section without an `h2` is chapter 0.
-- **Item:** each block in a chapter: a paragraph, note, figure (the number goes in its caption), card, list, table, card grid or limits block. For example, 5-6.
+- **Item:** each block in a chapter: a paragraph, note, figure, card, list, table, card grid or limits block. For example, 5-6. The number sits in the block's label: above a list or table, on the first line of a box, above a picture.
 - **Member:** each card, list item, table row, limit or glossary entry inside a collection. For example, 5-6-5. A list nested inside a member goes one level deeper (5-6-5-2).
 - **`.qgroups`** is see-through: each question group is an item of the chapter (9-2), and each question in it is a member (9-2-1).
 - Put every point, suggestion and question in its own paragraph, list item, card or row, so each gets its own number. Two questions in one paragraph share a number and can't be answered separately.
@@ -131,13 +161,13 @@ The user answers pages by number ("5-6-5 ok", "9-2 no") instead of quoting text,
 |---|---|
 | `.summary` | the summary under the header; `build.py` writes it from the plan, never by hand |
 | `.oneliner` | the page's goal, in chapter 0 |
-| `.note` | a highlighted paragraph (tint block): the bridge line that ends a chapter and leads into the next problem, or a question for someone |
+| `.note` | a highlighted box (tint block) with a `data-role`: `decided`, `question` (+ `data-who`), `open`, `changed`, `next`. A `div.note` may hold a `<p>` and a list of options |
 | `.card` inside `.grid` | a stacked list of cards; `.ru` for the original term, `.sp` for the "In this project" footer |
 | `.compare` | two or three cards side by side, only when comparing head to head |
-| `.limits` with `.limit` | what goes wrong: the problem in `.l` (bold), then the concrete scenario or what we do in `.r` |
-| `.table-box` with `<table>` | tables; `td.k` for a bold first column |
-| `figure` with `.fig-box` and `figcaption` | diagrams |
-| `figure` > `.fig-box` > `pre.code` | a short code sketch, only when the reader truly needs to see code; always with a figcaption |
+| `.limits` with `.limit` | what goes wrong: the problem in `.l` (bold), then the concrete scenario or what we do in `.r`. Usually `data-role="problems"` |
+| `.table-box` with `<table>` | tables; `td.k` for a bold first column; `data-role="table"` and a `data-name` that says what one row is |
+| `figure` with `.fig-box` and `figcaption` | diagrams; type, job and key come from the plan's `figures` |
+| `figure` > `.fig-box` > `pre.code` | a short code sketch, only when the reader truly needs to see code; always with a figcaption, `data-role="code"` and a `data-name` |
 | `details.fn` | a footnote: `<details class="fn"><summary>What's X?</summary><div><p>…</p></div></details>`, placed right after the paragraph it explains (never inside a `<p>`), or inside an `li` or a `.limit` after its text. As a section's direct child it gets its own reference number, so the user can say "4-3 still unclear". Also used for check questions: the summary is "Check: …?" and the body is the answer |
 | `ol.steps`, `ul.tight` | lists |
 | `.eyebrow` | the small label above each h2 ("2 · VOCABULARY") |
@@ -178,7 +208,7 @@ push -> private.api: "nightly" {class: bg}
 - **Diagrams show at their real size (scale 1), never stretched.** `build.py` gives each inlined SVG its real width and height, and the CSS only lets it shrink. So the text in every diagram is exactly the theme's sizes, which match the page: 16 for boxes and panel titles, 13 for edge labels. A small diagram stays small and centered. That's correct, so don't widen it to fill the box.
 - **Keep every diagram at most 762px wide** (the box's inner width). Anything wider has to shrink, and its text shrinks with it. `build.py` warns about it. Fixes, in order:
   1. Split long labels into 2–3 lines.
-  2. Shrink the grid gaps (60–80 is enough).
+  2. Shrink the grid gaps (60–80 is enough). But a gap with a labelled edge in it needs about 70: in a narrower one the label covers the arrow ("go back" hid the very arrow its picture was about). If that edge matters, put its target below instead of beside, so the edge runs down.
   3. Drop edge labels that repeat the target's name ("accept" pointing at "Accepted").
   4. Turn a row of sources into a column (`direction: right`, sources stacked on the left).
   5. Split the diagram in two.
@@ -212,7 +242,7 @@ The user's model is building a house in a jungle. It's getting dark and bamboo i
 **Plain sentences.**
 - One idea per sentence. Most sentences under 15 words.
 - At most one "which", "that", "because" or comma clause per sentence. If there are more, split it into two sentences.
-- Use the same word for the same thing, every time. Never swap in a synonym for variety. A new word makes the reader think it's a new thing. If it's "the basket" once, it's "the basket" everywhere, never "the snapshot", "the bundle" or "the input".
+- Use the same word for the same thing, every time. Never swap in a synonym for variety. A new word makes the reader think it's a new thing. If it's "the basket" once, it's "the basket" everywhere, never "the snapshot", "the bundle" or "the input". That holds across sibling pages too: page 01's "delivery" against page 02's "transport" for the same 9 % read as a contradiction in 3 of 3 runs.
 - Plain words before technical words: "the price calculator" first, then "programmers call it the engine".
 - Simple sentences, full ideas. Don't remove content. Remove complexity.
 

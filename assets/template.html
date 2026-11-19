@@ -17,9 +17,12 @@
   "example": "The running example in one line, with its key numbers.",
   "chapters": {
     "start": {"job": "The statement the reader leaves this chapter with.",
-              "terms": {"a new term": "its meaning in one plain line"}},
-    "p1":    {"job": "…", "terms": {}},
-    "next":  {"job": "…", "terms": {}}
+              "terms": {"a new term": "its meaning in one plain line"},
+              "figures": {"map-1": {"type": "overview", "job": "What the picture alone must show."}}},
+    "p1":    {"job": "…", "terms": {},
+              "figures": {"map-2": {"type": "overview", "job": "…"},
+                          "NAME": {"type": "complement", "job": "…", "key": {"green": "what green means here"}}}},
+    "next":  {"job": "…", "terms": {}, "figures": {"map-3": {"type": "overview", "job": "…"}}}
   }
 }
 </script>
@@ -64,10 +67,15 @@
   <span class="eyebrow">THE STARTING POINT</span>
   <h2>The world before the thing exists</h2>
   <p>The concrete situation, in plain words.</p>
+  <!-- The overview: one map per page, growing chapter by chapter. Type and job are in the plan. -->
+  <figure>
+    <div class="fig-box"><!-- d2:map-1 "One sentence saying what the map shows." --><!-- /d2 --></div>
+    <figcaption>What to notice. Don't describe the colours: the key under it does.</figcaption>
+  </figure>
   <details class="fn"><summary>Check: a question built from this chapter's job, with the running example's numbers</summary><div>
     <p>The answer, in two to four short sentences.</p>
   </div></details>
-  <p class="note">Bridge: the question this raises, which the next chapter answers.</p>
+  <p class="note" data-role="next">The question this raises, which the next chapter answers.</p>
 </section>
 
 <!-- One chapter per problem. Same rhythm every time: so far → problem → fix → name → check → bridge.
@@ -80,11 +88,11 @@
   <details class="fn"><summary>What's that term?</summary><div>
     <p>Two to five sentences explaining it, then how it applies in our case. The story must read fine with this closed.</p>
   </div></details>
-  <div class="limits">
+  <div class="limits" data-role="problems" data-name="what goes wrong">
     <div class="limit"><p class="l">What goes wrong.</p><p class="r">A concrete scenario with real names and numbers.</p></div>
   </div>
   <p>The fix:</p>
-  <ol class="steps">
+  <ol class="steps" data-role="steps" data-name="the fix">
     <li>Step one of the fix, in plain words.</li>
   </ol>
   <figure>
@@ -92,10 +100,15 @@
     <figcaption>What to notice in the diagram.</figcaption>
   </figure>
   <p class="small">Optional: the name programmers use for this idea, only after it's been explained.</p>
+  <figure>
+    <div class="fig-box"><!-- d2:map-2 "The map from chapter 1, with this chapter's piece added." --><!-- /d2 --></div>
+    <figcaption>What changed since the last chapter's map.</figcaption>
+  </figure>
   <details class="fn"><summary>Check: a "why?" or "what happens if…?" question with numbers from the running example</summary><div>
     <p>The answer, in two to four short sentences.</p>
   </div></details>
-  <p class="note">Bridge: the next problem this fix leads to.</p>
+  <!-- Other boxes: data-role="decided", "question" (data-who="Svetlana"), "open", "changed". -->
+  <p class="note" data-role="next">The next problem this fix leads to.</p>
 </section>
 
 <!-- The end: where this leaves us, and what comes next and why. -->
@@ -103,6 +116,10 @@
   <span class="eyebrow">WHAT'S NEXT</span>
   <h2>Where this leaves us</h2>
   <p>The result, and the next step with the reason it comes next.</p>
+  <figure>
+    <div class="fig-box"><!-- d2:map-3 "The whole map, where the story ends." --><!-- /d2 --></div>
+    <figcaption>The whole map.</figcaption>
+  </figure>
 </section>
 
 <!-- Sequence diagram (optional). Delete the Mermaid scripts below if the page has none.

@@ -1,25 +1,41 @@
-"""Cold read: can a reader with no context follow each chapter?
+"""Cold read: can a reader with no context follow each chapter, and does each picture show its job?
 
-Usage:  python coldread.py <page.html> <out-folder> [--chapter ID ...] [--runs 3] [--model haiku] [--bundle-only]
+Usage:  python coldread.py <page.html> <out-folder> [--chapter ID ...] [--runs 3] [--model haiku]
+                           [--picture-model haiku] [--text-only] [--bundle-only]
 
 The writer can't un-know what they meant, so they can't judge their own chapter. This script hands
 each chapter to a model that knows nothing but what a human reader would remember at that point:
   1. the summaries of the older pages (people don't remember details from two weeks ago),
-  2. the previous page, read in full,
+  2. the previous page, read in full (its pictures as the words drawn in them),
   3. this page from the top through the chapter, without this page's summary (it holds the answer
-     key) and without the chapter's check answers (the reader answers those).
+     key) and without the chapter's check answers (the reader answers those),
+  4. the chapter's own pictures as real images, the way the reader sees them.
 The model runs with no tools, no CLAUDE.md, no memory and an empty working folder, so it can't
 look anything up. It answers what it learned, the check questions, every term and where it learned
-it, what it had to assume, and what it would ask. Each chapter runs --runs times in parallel; a
-finding that repeats across runs is real, a one-off may be noise.
+it, what it had to assume, what it would ask, and what each picture showed it.
 
-Writes into <out-folder>:
-  bundle-ID.txt   exactly what the reader got for chapter ID
-  run-ID-K.json   each answer (raw text when it wasn't valid JSON)
-  repeated.md     read first: per chapter, the job next to what each run learned, the check
-                  answers, and only the findings two or more runs share
-  report.md       everything, per chapter, grouped by reference number
+Pictures get two more reads, because you can't see whether a reader uses a picture, only what is
+lost without it:
+  alone      every picture by itself, with its type and colour key but not its job: does the
+             picture show what the plan says it shows?
+  without    each complement picture removed from the chapter: does the chapter teach the
+             picture's job without it? If it does as well as with it, the picture only repeats
+             the text, or the reader ignored it.
+--text-only skips the images and both picture reads (quick rereads after a text fix).
+
+Each read runs --runs times in parallel; a finding that repeats across runs is real, a one-off may
+be noise. Writes into <out-folder>:
+  bundle-ID.txt            exactly what the reader got for chapter ID
+  pictures/REF.png         each picture as the reader saw it
+  run-ID-K.json            each chapter answer (raw text when it wasn't valid JSON)
+  alone-KEY-K.json         each picture read alone
+  without-KEY-K.json       each chapter read without one complement picture
+  repeated.md              read first: per chapter, the job next to what each run learned, the
+                           check answers, each picture's reads, and only the findings two or more
+                           runs share
+  report.md                everything, per chapter, grouped by reference number
 """
+import base64
 import json
 import shutil
 import subprocess
@@ -29,14 +45,16 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from pages import chapters, check_questions, label_numbers, ordered_pages, planned, read_plan, render, summary_text
+from pages import (chapters, check_questions, figure_plan, label_numbers, ordered_pages, pictures,
+                   planned, read_plan, render, summary_text)
 
 SYSTEM = (
     "You are a careful reader in a reading test. Besides the material you are given, you know "
     "everyday English and programming the way a strong LeetCode solver does: Python, C++, algorithms "
     "and data structures. Nothing about web, databases, frameworks, servers, business or this project. "
     "Answer from the material. When you rely on anything else, say so. An honest 'I am not sure' "
-    "helps more than a confident guess."
+    "helps more than a confident guess. Your own working folder and environment are not the project "
+    "the material describes: don't compare the two."
 )
 
 QUESTIONS = """Read everything above. Then answer about PART 4, THE CHAPTER UNDER TEST, only.
@@ -56,11 +74,30 @@ In "terms", list every term, name or abbreviation in the chapter that is not eve
 not LeetCode knowledge. "outside knowledge" means you understood it only from what you knew
 before, and the material never explained it. Use empty lists where you have nothing."""
 
+PICTURES_Q = """The chapter's pictures are attached as images, in order. Add one more key to the JSON:
+  "pictures": [{"ref": "the picture's reference number", "shows": "what the picture showed you",
+                "added": "what it told you that the chapter's text did not, or 'nothing'"}]"""
+
+TYPE_MEANING = {
+    "overview": "an overview: where one chapter's piece sits in the whole, the same map growing chapter by chapter",
+    "illustration": "an illustration: one narrow case, with real numbers",
+    "complement": "a complement: something that is easier to see than to read",
+}
+
+ALONE_Q = """This is one picture from an explainer page titled "{title}". The page labels it as {kind}.
+{key}
+Look only at the picture. Reply with one JSON object and nothing else:
+{{
+  "shows": "1-2 sentences: what this picture shows",
+  "main_point": "one sentence: the single point it makes",
+  "elements": [{{"element": "a box, arrow, colour or label", "meaning": "what you take it to stand for"}}],
+  "unclear": ["anything you could not work out from the picture alone"]
+}}"""
+
 
 def soup_of(path: Path):
     from bs4 import BeautifulSoup
-    soup = BeautifulSoup(path.read_text(encoding="utf-8"), "html.parser")
-    return soup
+    return BeautifulSoup(path.read_text(encoding="utf-8"), "html.parser")
 
 
 def page_lines(soup, upto=None, hide_answers_in=None) -> list[str]:
@@ -78,7 +115,29 @@ def page_lines(soup, upto=None, hide_answers_in=None) -> list[str]:
     return out
 
 
-def bundle(page: Path, target_id: str) -> tuple[str, dict]:
+def picture_info(page: Path, target_id: str) -> list[dict]:
+    """The chapter's pictures: plan key, reference number, position among the page's <figure>s,
+    type and job from the plan, and the colour key under it."""
+    soup = soup_of(page)
+    plan = read_plan(page.read_text(encoding="utf-8"))
+    target = next(c for c in chapters(soup) if c.id == target_id)
+    figs = soup.find_all("figure")
+    plan_figs = figure_plan(plan, target_id)
+    found = []
+    for key, fig in pictures(target.section):
+        num = fig.find("span", class_="num")
+        key_span = fig.find("span", class_="lbl-key")
+        entry = plan_figs.get(key, {})
+        found.append({"key": key, "ref": num.get_text().strip() if num else key,
+                      "index": next(i for i, f in enumerate(figs) if f is fig),
+                      "type": entry.get("type"), "job": entry.get("job", ""),
+                      "colour_key": key_span.get_text().strip() if key_span else ""})
+    return found
+
+
+def bundle(page: Path, target_id: str, images: bool = True, drop: str | None = None) -> tuple[str, dict]:
+    """What the reader gets for one chapter. With images, the chapter's pictures are replaced by
+    '[Picture 4-6: image 1, attached]' and sent as images. `drop` removes one picture entirely."""
     pages = ordered_pages(page.parent)
     index = next((i for i, (_, _, p) in enumerate(pages) if p.resolve() == page.resolve()), None)
     if index is None:
@@ -107,6 +166,18 @@ def bundle(page: Path, target_id: str) -> tuple[str, dict]:
     target = next((c for c in chapters(soup) if c.id == target_id), None)
     if target is None:
         sys.exit(f"{page.name} has no chapter with id {target_id}")
+    attached = []
+    for key, fig in pictures(target.section):
+        if key == drop:
+            fig.decompose()
+            continue
+        if images:
+            num = fig.find("span", class_="num")
+            ref = num.get_text().strip() if num else key
+            box = fig.find(class_="fig-box") or fig
+            box.clear()
+            box.append(soup.new_string(f"[Picture {ref}: image {len(attached) + 1}, attached]"))
+            attached.append(key)
     _, label, _ = pages[index]
     lines = page_lines(soup, upto=target.section, hide_answers_in=target.section)
     # Split this page into "before the chapter" and "the chapter", at the chapter's heading.
@@ -116,22 +187,65 @@ def bundle(page: Path, target_id: str) -> tuple[str, dict]:
     parts.append("")
     parts.append(f"=== PART 4. THE CHAPTER UNDER TEST: {target.n} · {target.title} ===")
     parts += lines[start:]
-    info = {"n": target.n, "title": target.title, "checks": check_questions(target.section)}
+    info = {"n": target.n, "title": target.title, "checks": check_questions(target.section), "attached": attached}
     return "\n".join(parts) + "\n", info
 
 
-def ask(prompt: str, model: str) -> str:
+def shoot(page: Path, figs: list[dict], folder: Path) -> dict:
+    """Screenshot each picture's box, the way the reader sees it: {key: png path}."""
+    from playwright.sync_api import sync_playwright
+    folder.mkdir(parents=True, exist_ok=True)
+    shots = {}
+    with sync_playwright() as pw:
+        try:
+            browser = pw.chromium.launch(channel="msedge")
+        except Exception:  # noqa: BLE001 - fall back to the bundled browser
+            browser = pw.chromium.launch()
+        tab = browser.new_page(viewport={"width": 1100, "height": 1000})
+        tab.goto(page.as_uri())
+        tab.wait_for_timeout(3000)  # fonts + mermaid
+        for f in figs:
+            fig = tab.locator("figure").nth(f["index"])
+            box = fig.locator(".fig-box")
+            path = folder / f"{f['ref']}.png"
+            (box if box.count() else fig).first.screenshot(path=str(path))
+            shots[f["key"]] = path
+        browser.close()
+    return shots
+
+
+def ask(prompt: str, model: str, images: list[Path] | None = None) -> str:
+    """One read. Images go in as content blocks next to the text; the reader still has no tools."""
     exe = shutil.which("claude")
     if exe is None:
         raise RuntimeError("the claude CLI is not on PATH")
     cmd = [exe, "-p", "--model", model, "--tools", "", "--setting-sources", "", "--strict-mcp-config",
            "--no-session-persistence", "--system-prompt", SYSTEM]
+    if images:
+        content = [{"type": "text", "text": prompt}]
+        for k, img in enumerate(images, start=1):
+            content.append({"type": "text", "text": f"Image {k}:"})
+            content.append({"type": "image", "source": {"type": "base64", "media_type": "image/png",
+                                                        "data": base64.b64encode(img.read_bytes()).decode()}})
+        stdin = json.dumps({"type": "user", "message": {"role": "user", "content": content}}) + "\n"
+        cmd += ["--input-format", "stream-json", "--output-format", "stream-json", "--verbose"]
+    else:
+        stdin = prompt
     with tempfile.TemporaryDirectory(prefix="coldread-") as empty:
-        r = subprocess.run(cmd, input=prompt, cwd=empty, capture_output=True, text=True,
+        r = subprocess.run(cmd, input=stdin, cwd=empty, capture_output=True, text=True,
                            encoding="utf-8", errors="replace", timeout=900)
     if r.returncode:
         raise RuntimeError((r.stderr or r.stdout).strip()[-800:])
-    return r.stdout
+    if not images:
+        return r.stdout
+    for line in reversed(r.stdout.splitlines()):
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if event.get("type") == "result":
+            return str(event.get("result", ""))
+    raise RuntimeError("no result in the stream: " + r.stdout[-500:])
 
 
 def parse(raw: str):
@@ -185,7 +299,31 @@ def _runs(hits) -> int:
     return len({k for k, _ in hits})
 
 
-def report_chapter(cid: str, info: dict, job: str, answers: list) -> list[str]:
+def _picture_lines(figs: list[dict], answers: list, alone: dict, without: dict, full: bool) -> list[str]:
+    """Per picture: its job, what it showed alone, what it added in the chapter, and (complement)
+    what the chapter taught without it."""
+    out = []
+    for f in figs:
+        out += ["", f"**Picture {f['ref']}** ({f['key']}, {f['type'] or 'no type in the plan'}). "
+                    f"Job: {f['job'] or '(none)'}"]
+        for k, a in enumerate(alone.get(f["key"], []), start=1):
+            if isinstance(a, dict):
+                out.append(f"- alone, run {k}: {a.get('shows', '')} Point: {a.get('main_point', '')}")
+                if full:
+                    out += [f"  - {e.get('element', '')}: {e.get('meaning', '')}" for e in _items(a, "elements")]
+                    out += [f"  - unclear: {u}" for u in (a.get("unclear") or []) if isinstance(u, str)]
+            else:
+                out.append(f"- alone, run {k}: (no JSON)")
+        for k, a in enumerate(answers, start=1):
+            for p in _items(a, "pictures"):
+                if str(p.get("ref", "")).strip() == f["ref"]:
+                    out.append(f"- in the chapter, run {k}: {p.get('shows', '')} Added: {p.get('added', '')}")
+        for k, a in enumerate(without.get(f["key"], []), start=1):
+            out.append(f"- without it, run {k} learned: {a.get('learned', '') if isinstance(a, dict) else '(no JSON)'}")
+    return out
+
+
+def report_chapter(cid, info, job, answers, figs, alone, without) -> list[str]:
     runs = len(answers)
     out = [f"## {info['n']} · {info['title']} (#{cid})", "", f"**Job, the answer key:** {job}", "",
            "**Main point, per run:**"]
@@ -202,6 +340,7 @@ def report_chapter(cid: str, info: dict, job: str, answers: list) -> list[str]:
         out.append(f"- {q}")
         out.append(f"  - page: {page_answer}")
         out += [f"  - run {k}: {text}" for k, text in _check_answers(answers, i)]
+    out += _picture_lines(figs, answers, alone, without, full=True)
 
     outside = _outside(answers)
     out += ["", "**Terms it knew only from outside knowledge:**"]
@@ -223,9 +362,11 @@ def report_chapter(cid: str, info: dict, job: str, answers: list) -> list[str]:
     return out
 
 
-def repeated_chapter(cid: str, info: dict, job: str, answers: list) -> list[str]:
-    """The judge's short view: the job next to what each run learned, the check answers, and only
-    the terms, assumptions, questions and contradictions that two or more runs share."""
+def repeated_chapter(cid, info, job, answers, figs, alone, without, next_refs) -> list[str]:
+    """The judge's short view: the job next to what each run learned, the check answers, each
+    picture's reads, and only the terms, assumptions, questions and contradictions that two or more
+    runs share. Findings at the chapter's "Next problem" box are left out: the reader sees only up to
+    this chapter, so the question that leads into the next one always looks unanswered."""
     runs = len(answers)
     out = [f"## {info['n']} · {info['title']} (#{cid})", "", f"**Job:** {job}", "", "**Learned:**"]
     for k, a in enumerate(answers, start=1):
@@ -233,20 +374,33 @@ def repeated_chapter(cid: str, info: dict, job: str, answers: list) -> list[str]
     for i, (q, page_answer) in enumerate(info["checks"]):
         out += ["", f"**{q}**", f"- page: {page_answer}"]
         out += [f"- run {k}: {text}" for k, text in _check_answers(answers, i)]
+    out += _picture_lines(figs, answers, alone, without, full=False)
     shared = [f"- term **{term}** known only from outside, {_runs(hits)}/{runs} runs"
               for term, hits in _outside(answers).items() if _runs(hits) >= 2]
     for key, field, title in FINDINGS:
         for ref, hits in _by_ref(answers, key, field):
-            if _runs(hits) >= 2:
+            if _runs(hits) >= 2 and ref not in next_refs:
                 shared.append(f"- {title.lower()} at **{ref}**, {_runs(hits)}/{runs} runs")
                 shared += [f"  - run {k}: {text}" for k, text in hits]
     out += ["", "**Shared by 2+ runs:**"] + (shared or ["- nothing"]) + [""]
     return out
 
 
+def next_problem_refs(page: Path, cid: str) -> set[str]:
+    """Reference numbers of the chapter's "Next problem" boxes."""
+    soup = soup_of(page)
+    target = next(c for c in chapters(soup) if c.id == cid)
+    refs = set()
+    for box in target.section.find_all(attrs={"data-role": "next"}):
+        num = box.find("span", class_="num")
+        if num:
+            refs.add(num.get_text().strip())
+    return refs
+
+
 def main():
     args = sys.argv[1:]
-    flags = {"--runs": "3", "--model": "haiku"}
+    flags = {"--runs": "3", "--model": "haiku", "--picture-model": None}
     wanted, positional, i = [], [], 0
     while i < len(args):
         a = args[i]
@@ -267,6 +421,8 @@ def main():
     page, out = Path(positional[0]).resolve(), Path(positional[1]).resolve()
     out.mkdir(parents=True, exist_ok=True)
     runs, model = int(flags["--runs"]), flags["--model"]
+    picture_model = flags["--picture-model"] or model
+    with_pictures = "--text-only" not in flags
 
     text = page.read_text(encoding="utf-8")
     try:
@@ -280,45 +436,77 @@ def main():
     missing = [cid for cid in ids if cid not in jobs]
     if missing:
         sys.exit(f"no job in the plan for: {', '.join(missing)}")
+    title = next((line for line in page_lines(soup_of(page))[:3] if line.startswith("# ")), "# " + page.name)[2:]
 
-    bundles = {}
+    bundles, figs, without_bundles = {}, {}, {}
     for cid in ids:
-        body, info = bundle(page, cid)
+        body, info = bundle(page, cid, images=with_pictures)
         (out / f"bundle-{cid}.txt").write_text(body, encoding="utf-8")
         bundles[cid] = (body, info)
-        print(f"bundle   {out / f'bundle-{cid}.txt'} ({len(body.split())} words)")
+        figs[cid] = picture_info(page, cid) if with_pictures else []
+        print(f"bundle   {out / f'bundle-{cid}.txt'} ({len(body.split())} words, {len(info['attached'])} pictures)")
+        for f in figs[cid]:
+            if f["type"] == "complement":
+                without_bundles[f["key"]] = (cid, bundle(page, cid, images=True, drop=f["key"]))
     if "--bundle-only" in flags:
         return
 
-    tasks = [(cid, k) for cid in ids for k in range(1, runs + 1)]
+    all_figs = [f for cid in ids for f in figs[cid]]
+    shots = shoot(page, all_figs, out / "pictures") if all_figs else {}
+    for f in all_figs:
+        print(f"picture  {shots[f['key']]}")
+
+    tasks = [("chapter", cid, None, k) for cid in ids for k in range(1, runs + 1)]
+    by_key = {f["key"]: f for f in all_figs}
+    tasks += [("alone", None, f["key"], k) for f in all_figs for k in range(1, runs + 1)]
+    tasks += [("without", cid, key, k) for key, (cid, _) in without_bundles.items() for k in range(1, runs + 1)]
 
     def one(task):
-        cid, k = task
+        kind, cid, fig, k = task
         try:
-            raw = ask(bundles[cid][0] + "\n\n" + QUESTIONS, model)
+            if kind == "chapter":
+                body, info = bundles[cid]
+                imgs = [shots[key] for key in info["attached"]]
+                prompt = body + "\n\n" + QUESTIONS + ("\n" + PICTURES_Q if imgs else "")
+                raw, name = ask(prompt, model, imgs), f"run-{cid}-{k}.json"
+            elif kind == "alone":
+                fig = by_key[fig]
+                kind_text = TYPE_MEANING.get(fig["type"], "a picture")
+                prompt = ALONE_Q.format(title=title, kind=kind_text, key=fig["colour_key"])
+                raw, name = ask(prompt, picture_model, [shots[fig["key"]]]), f"alone-{fig['key']}-{k}.json"
+            else:
+                _, (body, info) = without_bundles[fig]
+                imgs = [shots[key] for key in info["attached"]]
+                prompt = body + "\n\n" + QUESTIONS + ("\n" + PICTURES_Q if imgs else "")
+                raw, name = ask(prompt, model, imgs), f"without-{fig}-{k}.json"
         except Exception as e:  # noqa: BLE001 - one failed run must not stop the others
-            raw = f"(run failed: {e})"
+            raw, name = f"(run failed: {e})", f"failed-{kind}-{cid or ''}-{k}.txt"
         parsed = parse(raw)
-        path = out / f"run-{cid}-{k}.json"
-        if parsed is not None:
-            path.write_text(json.dumps(parsed, ensure_ascii=False, indent=2), encoding="utf-8")
-        else:
-            path.write_text(raw, encoding="utf-8")
-        print(f"read     {cid} run {k}: {'ok' if parsed is not None else 'no JSON'}")
+        path = out / name
+        path.write_text(json.dumps(parsed, ensure_ascii=False, indent=2) if parsed is not None else raw,
+                        encoding="utf-8")
+        print(f"read     {name}: {'ok' if parsed is not None else 'no JSON'}")
         return task, parsed if parsed is not None else raw
 
     with ThreadPoolExecutor(max_workers=min(6, len(tasks))) as pool:
         results = dict(pool.map(one, tasks))
 
     lines = [f"# Cold read: {page.name}", "",
-             f"Model `{model}`, {runs} runs per chapter. A finding that repeats across runs is real; "
-             "a one-off may be noise. The reader can't feel overload: that stays with the term count and you.", ""]
+             f"Model `{model}`, pictures read alone by `{picture_model}`, {runs} runs per read. A finding "
+             "that repeats across runs is real; a one-off may be noise. The reader can't feel overload: "
+             "that stays with the term count and you.", ""]
     short = [f"# Cold read, repeated findings: {page.name}", "",
-             f"Read this first. The full answers are in report.md. Model `{model}`, {runs} runs per chapter.", ""]
+             f"Read this first. The full answers are in report.md. Model `{model}`, pictures read alone by "
+             f"`{picture_model}`, {runs} runs per read.", ""]
     for cid in ids:
-        answers = [results[(cid, k)] for k in range(1, runs + 1)]
-        lines += report_chapter(cid, bundles[cid][1], jobs[cid], answers)
-        short += repeated_chapter(cid, bundles[cid][1], jobs[cid], answers)
+        answers = [results[("chapter", cid, None, k)] for k in range(1, runs + 1)]
+        alone = {f["key"]: [results[("alone", None, f["key"], k)] for k in range(1, runs + 1)] for f in figs[cid]}
+        without = {key: [results[("without", c, key, k)] for k in range(1, runs + 1)]
+                   for key, (c, _) in without_bundles.items() if c == cid}
+        info = bundles[cid][1]
+        lines += report_chapter(cid, info, jobs[cid], answers, figs[cid], alone, without)
+        short += repeated_chapter(cid, info, jobs[cid], answers, figs[cid], alone, without,
+                                  next_problem_refs(page, cid))
     (out / "report.md").write_text("\n".join(lines), encoding="utf-8")
     (out / "repeated.md").write_text("\n".join(short), encoding="utf-8")
     print(f"report   {out / 'repeated.md'} (read first)")
