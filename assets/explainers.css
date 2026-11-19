@@ -55,6 +55,9 @@ section{display:flex;flex-direction:column;gap:18px;padding-top:56px}
 .small,figcaption,footer,.ru,.what,.who,.count{font-size:var(--s);color:var(--muted)}
 footer{padding-top:56px}
 
+/* the summary at the top of every page, written by build.py from the plan */
+.summary{background:var(--surf);border:1px solid var(--line);padding:18px 22px;margin-top:40px;display:flex;flex-direction:column;gap:12px}
+
 /* one "highlighted text" style for every note, callout and one-liner */
 .oneliner,.note,.watch,.callout{background:var(--tint);padding:14px 18px}
 .callout{display:flex;flex-direction:column;gap:8px}

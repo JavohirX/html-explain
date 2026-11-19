@@ -1,6 +1,6 @@
 ---
 name: html-explain
-description: Build a local HTML explainer page (warm paper style, sidebar layout, D2 diagrams, Mermaid sequences) that teaches a system, service, integration or concept the user doesn't understand yet, in any project, written as a problem-driven story (situation → problem → fix → next problem) in short plain sentences, with real numbers, one running example and a picture per chapter. Use when the user asks for an HTML page with explanations, "make an html about X", "I don't get what X does", or wants more pages like the existing explainers.
+description: Build a local HTML explainer page (warm paper style, sidebar layout, D2 diagrams, Mermaid sequences) that teaches a system, service, integration or concept the user doesn't understand yet, in any project, written as a problem-driven story (situation → problem → fix → next problem) in short plain sentences, with real numbers, one running example and a picture per chapter, a plan with one job per chapter, a summary at the top, and a cold-read test by a model with no context. Use when the user asks for an HTML page with explanations, "make an html about X", "I don't get what X does", or wants more pages like the existing explainers.
 ---
 
 # Explainer pages
@@ -26,10 +26,14 @@ Skill assets:
 - `assets/fonts/`: the fonts D2 embeds in diagrams.
 
 Scripts:
-- `scripts/build.py <folder>`: copies the stylesheet, renders diagrams, inlines them into the pages, and rewrites the sidebar page list.
+- `scripts/build.py <folder>`: copies the stylesheet, renders diagrams, inlines them into the pages, writes each page's summary from its plan and checks the plan's rules, numbers everything, and rewrites the sidebar page list.
 - `scripts/check.py <page> <out>`: takes one set of screenshots.
+- `scripts/coldread.py <page> <out>`: the cold read (step 8). Hands each chapter to a model with no context and writes a report to judge.
+- `scripts/pages.py`: shared by the others: page order, the plan, chapters, summaries, plain text.
 
-Tools: D2 (`%LOCALAPPDATA%\Programs\d2\d2.exe`, or on PATH), Python with Playwright (Edge channel) for the check. Mermaid loads from a pinned CDN.
+Tools: D2 (`%LOCALAPPDATA%\Programs\d2\d2.exe`, or on PATH), Python with beautifulsoup4, Playwright (Edge channel) for the check, and the `claude` CLI for the cold read. Mermaid loads from a pinned CDN.
+
+The skill is a git repo (`github.com/JavohirX/html-explain`, private). Commit changes to the skill there.
 
 ## Steps
 
@@ -45,7 +49,7 @@ Tools: D2 (`%LOCALAPPDATA%\Programs\d2\d2.exe`, or on PATH), Python with Playwri
    If the chain needs more than about 12 chapters, split it into several pages, each a complete story. The page's question decides the chain. Don't pad it with a vocabulary section or a comparison table that no problem asked for.
 
    Then, before writing any prose, add to the plan:
-   - **The job of each chapter:** one sentence, "after this chapter the reader knows …". Every item in the chapter serves that sentence. A detail the job doesn't need goes into a footnote or out. Three checks against the job:
+   - **The job of each chapter:** the one statement the reader leaves the chapter with, written as that statement ("A test case is a basket in and the ТЗ's exact numbers out"), not as "the reader knows…". Prefer one claim; if it takes two, the cold read checks each. Every item in the chapter serves the job. A detail the job doesn't need goes into a footnote or out. Three checks against the job:
      - **The frame keeps its promise.** If the chapter uses a frame (an exam, a LeetCode test case, a recipe), list what the frame makes the reader expect, and show each part with the running example's numbers. A test case promises an input and an expected output, so show both. If you can't, drop the frame.
      - **The running example leads.** Show it first and whole. The other cases come after it, as "four more like it". A full source table is rarely the job.
      - **The check question tests the job.** Write it from the job sentence, before the prose. If the easy question to ask is about a detail, that detail is too big on the page.
@@ -54,16 +58,29 @@ Tools: D2 (`%LOCALAPPDATA%\Programs\d2\d2.exe`, or on PATH), Python with Playwri
    - **The picture per chapter:** what each chapter shows. Best is one picture that grows: the same diagram in every chapter, with the new piece in `rust`.
    - **The check questions:** 1–2 per chapter, and their answers.
    - **Just in time:** cut anything the reader doesn't need yet. If something gets built next week, it gets one line now and its own page on the day it's built.
-3. **Copy `assets/template.html`** into the folder:
+3. **Copy `assets/template.html`** into the folder, and **write the plan into it before any prose**:
    - Set `<title>`: "X Explained", or the question itself.
    - Set `<meta name="explainer" content="ORDER|Label">`. Pages are listed oldest to newest, so a new page always takes the next order after the highest one in the folder (10, 20, 30…). Don't slot a new page between older ones. `build.py` numbers the sidebar 01, 02, 03… from that order, so don't put a number in the label.
+   - Fill the plan, the `<script type="application/json" id="plan">` block in the `<head>`: the running `example` in one line with its key numbers, and under `chapters` one entry per chapter `id` with its `job` and its `terms` (each new term with its meaning in one plain line). The plan is the single source: `build.py` writes the page's summary from it, and `coldread.py` uses each job as the answer key. To change the summary, change the plan.
    - Fill the "On this page" links in the sidebar to match the section `id`s.
-4. **Write diagrams** as `diagrams/NAME.d2` (see below). Place each one in the page as `<!-- d2:NAME "alt sentence" --><!-- /d2 -->` inside `<div class="fig-box">`. Don't put double quotes inside the alt text. Never hand-place SVG coordinates: that's what caused overlapping labels before.
-5. **Build:** `python ~/.claude/skills/html-explain/scripts/build.py <folder>`. Fix any FAILED or WARNING lines.
-6. **Look once:** `python ~/.claude/skills/html-explain/scripts/check.py <page.html> <scratchpad>/check`. Read the screenshots, fix what they show in one pass, rebuild, and stop. Don't loop.
+
+   **Every page has a summary at the top.** A reader can't recall a detail from a page two weeks old, but they can reread its summary in a minute. When you edit an older page that has no plan, add its plan first.
+4. **Write the chapters,** following **Writing** below, each one serving its job.
+5. **Write diagrams** as `diagrams/NAME.d2` (see below). Place each one in the page as `<!-- d2:NAME "alt sentence" --><!-- /d2 -->` inside `<div class="fig-box">`. Don't put double quotes inside the alt text. Never hand-place SVG coordinates: that's what caused overlapping labels before. The alt sentence says what the picture shows: the cold reader gets only that and the words drawn in it.
+6. **Build:** `python ~/.claude/skills/html-explain/scripts/build.py <folder>`. Fix every FAILED line, and every WARNING about the page you're working on: a chapter without a job, more than 3 new terms, a chapter without 1–2 check questions.
+7. **Look once:** `python ~/.claude/skills/html-explain/scripts/check.py <page.html> <scratchpad>/check`. Read the screenshots, fix what they show in one pass, rebuild, and stop. Don't loop.
    **Then reread the text once as the user,** someone who knows only LeetCode. Mark every word they'd stop at and every sentence they'd read twice. Fix each one: explain it, split it, or cut it. Count each chapter's new terms again (3 at most).
-   **Then the summary test,** chapter by chapter: write one sentence the way that reader would sum the chapter up, and compare it with the planned job. If they differ, the chapter is built around the wrong thing. Rebuild it from the job; don't patch words. The word-level checks can't catch this. Example: chapter 1 of "Monday, part 1" framed the ТЗ's five products as an exam with test cases, so the reader expected an input and an output. It showed a table of outputs only, then counted them, then asked why one brand has 5 prices and another 4. Every sentence passed the rules. The reader's summary was "how many prices each brand has". The job was "a test case is a basket in and the ТЗ's numbers out, and there are 22 numbers to check after every change".
-7. **Report:** give the file link, then answer the user's actual question in plain words in 2–4 lines, then list any open questions the page raises. Don't write a report of what you did ("I added A, B and C"). The user can't check that. Tell them what the page will teach them and where to start reading.
+8. **Cold read:** `python ~/.claude/skills/html-explain/scripts/coldread.py <page.html> <scratchpad>/coldread`, then read `report.md`.
+   - **Why:** the writer can't un-know what they meant, so they fill every gap without noticing, and the word-level checks pass anyway. Chapter 1 of "Monday, part 1" framed the ТЗ's five products as test cases, then showed only outputs, counted them, and asked why one brand has 5 prices and another 4. Every sentence passed the rules. In the cold read, none of 3 runs mentioned any input, and one summed it up as "how many numbers each product has". After the rewrite, all 3 learned "a basket of inputs, and the exact numbers that must come out".
+   - **What the reader gets:** what a person would hold at that point. The summaries of the older pages, the previous page in full, and this page from the top through the chapter. It doesn't get this page's summary, because that holds the answer key, or the chapter's check answers, because it answers those itself. It runs with no tools, no CLAUDE.md, no memory and an empty folder, 3 times per chapter, and answers what it learned, the check questions, each term and where it learned it, what it assumed, and what it would ask.
+   - **Judge each chapter:**
+     - **The job is learned:** each claim of the job shows up in "what it learned" in at least 2 of 3 runs. The main point is only a hint: readers tend to pick the chapter's finish line ("Monday is over when all 22 pass") as the main point.
+     - **The check answers match the page's answers.** A run that says "the chapter doesn't state this, my guess is…" and guesses right still passes: a check may take one step of reasoning.
+     - **No unexplained terms:** a term marked "outside knowledge" in 2 or more runs needs an explanation or a footnote. Ignore everyday words and LeetCode knowledge the user has (VAT, currency signs). If an older page explains the term but has no summary yet, add that page's plan instead.
+     - **No repeated confusion:** an assumption, question or contradiction at the same reference number in 2 or more runs is a real gap, so fix that sentence. A finding from one run only gets fixed when it's clearly right.
+   - **Fix:** when the job isn't learned, rebuild the chapter from its job; don't patch words. Then rerun only those chapters with `--chapter ID`. Stop after 2 rounds, and tell the user what's still open.
+   - The reader can't feel overload, so it can't tell you a chapter is too heavy. That stays with the term count and the user.
+9. **Report:** give the file link, then answer the user's actual question in plain words in 2–4 lines, then list any open questions the page raises. Add one line on the cold read: which chapters passed, and anything still open. Don't write a report of what you did ("I added A, B and C"). The user can't check that. Tell them what the page will teach them and where to start reading.
 
 ## Reference numbers
 
@@ -105,6 +122,7 @@ The user answers pages by number ("5-6-5 ok", "9-2 no") instead of quoting text,
 
 | Class | For |
 |---|---|
+| `.summary` | the summary under the header; `build.py` writes it from the plan, never by hand |
 | `.oneliner` | the page's goal, in chapter 0 |
 | `.note` | a highlighted paragraph (tint block): the bridge line that ends a chapter and leads into the next problem, or a question for someone |
 | `.card` inside `.grid` | a stacked list of cards; `.ru` for the original term, `.sp` for the "In this project" footer |

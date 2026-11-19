@@ -9,6 +9,20 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600&family=Open+Sans:wght@400;700&family=Cousine:wght@400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="explainers.css">
+<!-- The plan, written before any prose. Keys are the chapter section ids. A job is the one statement
+     the reader leaves the chapter with. build.py turns this into the summary at the top and checks the
+     rules; coldread.py uses each job as the answer key. -->
+<script type="application/json" id="plan">
+{
+  "example": "The running example in one line, with its key numbers.",
+  "chapters": {
+    "start": {"job": "The statement the reader leaves this chapter with.",
+              "terms": {"a new term": "its meaning in one plain line"}},
+    "p1":    {"job": "…", "terms": {}},
+    "next":  {"job": "…", "terms": {}}
+  }
+}
+</script>
 </head>
 <body>
 <div class="layout">
@@ -35,6 +49,9 @@
   <p class="lede">Two or three sentences: what this page is about, and that it's told one problem at a time.</p>
 </header>
 
+<!-- The summary: written by build.py from the plan. Don't edit it here; edit the plan. -->
+<!-- summary --><!-- /summary -->
+
 <!-- Chapter 0: the goal, then a map of the story. -->
 <section>
   <p class="oneliner">Goal of this page: by the end you'll know …</p>
@@ -47,6 +64,9 @@
   <span class="eyebrow">THE STARTING POINT</span>
   <h2>The world before the thing exists</h2>
   <p>The concrete situation, in plain words.</p>
+  <details class="fn"><summary>Check: a question built from this chapter's job, with the running example's numbers</summary><div>
+    <p>The answer, in two to four short sentences.</p>
+  </div></details>
   <p class="note">Bridge: the question this raises, which the next chapter answers.</p>
 </section>
 

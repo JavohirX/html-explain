@@ -9,9 +9,12 @@ Usage:  python build.py <pages-folder> [--force]
        <!-- d2:NAME "alt text" --> ... <!-- /d2 -->
    so a page is one self-contained file (viewers that block local sub-files still show it).
    A legacy <img src="diagrams/NAME.svg" alt="..."> is converted to that marker.
-4. Numbers every chapter, item and sub-item of each page (5, 5-6, 5-6-5) so the reader can
+4. Writes the summary at the top of each page from its plan (see pages.py), between
+   <!-- summary --> and <!-- /summary -->, and checks the plan's rules: one job per chapter,
+   at most 3 new terms, 1-2 check questions. Each broken rule is a WARNING line.
+5. Numbers every chapter, item and sub-item of each page (5, 5-6, 5-6-5) so the reader can
    answer "5-6-5 ok" instead of quoting text. See enumerate_page().
-5. Rewrites the sidebar page list between <!-- nav --> and <!-- /nav --> in every page,
+6. Rewrites the sidebar page list between <!-- nav --> and <!-- /nav --> in every page,
    listing all pages that carry <meta name="explainer" content="ORDER|Label">, numbered 01, 02, ...
 """
 import html
@@ -21,6 +24,8 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+from pages import chapters, lint, ordered_pages, read_plan, summary_html
 
 SKILL = Path(__file__).resolve().parent.parent
 ASSETS = SKILL / "assets"
@@ -289,17 +294,44 @@ def enumerate_pages(folder: Path):
             print(f"numbers  {page.name}")
 
 
-META = re.compile(r'<meta\s+name="explainer"\s+content="(\d+)\|([^"]+)"\s*/?>', re.I)
+SUMMARY = re.compile(r"(<!-- summary -->)(.*?)(<!-- /summary -->)", re.S)
+
+
+def summarize(folder: Path):
+    """Every page gets a summary at the top, written from its plan. Pages without a plan are flagged."""
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        print("WARNING  bs4 is not installed: no summaries (pip install beautifulsoup4)")
+        return
+    for _, _, page in ordered_pages(folder):
+        text = page.read_text(encoding="utf-8")
+        try:
+            plan = read_plan(text)
+        except ValueError as e:
+            print(f"FAILED   {page.name}: {e}")
+            continue
+        if plan is None:
+            print(f"WARNING  {page.name} has no plan: no summary at the top, and coldread.py can't test it")
+            continue
+        chs = chapters(BeautifulSoup(text, "html.parser"))
+        for msg in lint(plan, chs):
+            print(f"WARNING  {page.name}: {msg}")
+        if not SUMMARY.search(text):
+            print(f"WARNING  {page.name} has a plan but no <!-- summary --><!-- /summary --> under the header")
+            continue
+        block = "\n" + summary_html(plan, chs) + "\n"
+        new = SUMMARY.sub(lambda m: m.group(1) + block + m.group(3), text)
+        if new != text:
+            page.write_text(new, encoding="utf-8")
+            print(f"summary  {page.name}")
+
+
 NAV = re.compile(r"(<!-- nav -->)(.*?)(<!-- /nav -->)", re.S)
 
 
 def nav(folder: Path):
-    pages = []
-    for p in folder.glob("*.html"):
-        m = META.search(p.read_text(encoding="utf-8"))
-        if m:
-            pages.append((int(m.group(1)), m.group(2).strip(), p.name))
-    pages.sort()
+    pages = [(order, label, p.name) for order, label, p in ordered_pages(folder)]
     for _, _, name in pages:
         path = folder / name
         text = path.read_text(encoding="utf-8")
@@ -324,6 +356,7 @@ def main():
     sync_css(folder)
     render(folder, "--force" in sys.argv)
     inline(folder)
+    summarize(folder)
     enumerate_pages(folder)
     nav(folder)
     print("done")
