@@ -62,7 +62,7 @@ Reply with one JSON object and nothing else, in this shape:
 {
   "learned": "2-4 sentences: what this chapter taught you",
   "main_point": "one sentence: the single main point of this chapter",
-  "check_answers": [{"question": "the check question", "answer": "your answer, from the material alone"}],
+  "check_answers": [{"question": "the check question or test", "answer": "your answer, from the material alone. For a test with options, start with the option number you pick, then say if another option could also be right"}],
   "terms": [{"term": "...", "meaning": "what you take it to mean",
              "source": "this chapter | earlier chapter | previous page | older summary | outside knowledge",
              "ref": "the reference number where you met it, like 1-3-5"}],

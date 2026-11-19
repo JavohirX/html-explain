@@ -2,7 +2,8 @@
 
 Usage:  python build.py <pages-folder> [--force]
 
-1. Copies the shared stylesheet (explainers.css) into the folder.
+1. Copies the shared stylesheet (explainers.css) and script (explainers.js) into the folder.
+   Tests (.quiz) and questions (.choice) get a stable id and a one-time shuffle (interactive()).
 2. Renders every diagrams/*.d2 to diagrams/*.svg with the explainer theme and fonts
    (only when the .d2 or the theme is newer than the .svg, or with --force).
 3. Inlines each rendered SVG into the pages, between
@@ -54,10 +55,157 @@ def find_d2():
 
 
 def sync_css(folder: Path):
-    src, dst = ASSETS / "explainers.css", folder / "explainers.css"
-    if not dst.exists() or dst.read_bytes() != src.read_bytes():
-        shutil.copyfile(src, dst)
-        print("css      explainers.css updated")
+    for name in ("explainers.css", "explainers.js"):
+        src, dst = ASSETS / name, folder / name
+        if not dst.exists() or dst.read_bytes() != src.read_bytes():
+            shutil.copyfile(src, dst)
+            print(f"asset    {name} updated")
+
+
+# ------------------------------------------------------------------------------------------
+# Tests and questions answered in the page (explainers.js runs them and remembers the answers).
+#   <div class="quiz" data-role="turn|test"> <p class="q">…</p> <ul class="opts">
+#     <li>option<span class="why">why it's wrong</span></li> <li class="right">…<span class="why">…</span></li> …
+#   <div class="choice" data-role="question"> <p class="q">…</p> options as <ul class="opts"> or a
+#     .table-box (one row per option); the recommended one has class "rec"; <p class="rec-why"> says why.
+#   <div class="answer-field" data-role="question" data-placeholder="…"> <p>what to write</p> </div>
+# Each block gets a stable id the first time, and its options are shuffled once, at that moment,
+# so the right answer or the recommendation isn't always first. After that the order stays.
+# ------------------------------------------------------------------------------------------
+QBLOCK = re.compile(r'<div class="(quiz|choice|answer-field)"([^>]*)>')
+DIV_TAG = re.compile(r"<div\b|</div>")
+
+
+def _block_end(text: str, start: int) -> int:
+    depth = 0
+    for m in DIV_TAG.finditer(text, start):
+        depth += 1 if m.group(0) == "<div" else -1
+        if depth == 0:
+            return m.end()
+    return len(text)
+
+
+OPTION_LISTS = (('ul class="opts"', "li"), ("tbody", "tr"))
+KEY_OPTION = re.compile(r'<(?:li|tr) class="(?:right|rec)"')
+
+
+def _options(block: str):
+    """(match of the option list's body, its options, their indent), or None."""
+    for open_tag, item in OPTION_LISTS:
+        m = re.search(rf'(<{open_tag}>)(.*?)(\s*</{open_tag.split()[0]}>)', block, re.S)
+        if m:
+            return m, re.findall(rf"<{item}\b.*?</{item}>", m.group(2), re.S), re.match(r"\s*", m.group(2)).group(0)
+    return None
+
+
+def _key_place(block: str) -> int | None:
+    """Where the right answer (a test) or my recommendation (a question) sits, counted from 0."""
+    found = _options(block)
+    if not found:
+        return None
+    places = [i for i, it in enumerate(found[1]) if KEY_OPTION.match(it)]
+    return places[0] if len(places) == 1 else None
+
+
+def _shuffle_once(block: str, seed: str, used: dict) -> str:
+    """Shuffle the options once, when the block gets its id. The right or recommended option goes to the
+    place used least so far on this page (ties drawn at random), so it isn't "usually the first" by chance.
+    The others are shuffled around it. `used` counts places on this page: {place: times}."""
+    import random
+    rnd = random.Random(seed)
+    found = _options(block)
+    if not found or len(found[1]) < 2:
+        return block
+    m, items, indent = found
+    keys = [i for i, it in enumerate(items) if KEY_OPTION.match(it)]
+    rest = [it for i, it in enumerate(items) if i not in keys]
+    rnd.shuffle(rest)
+    if len(keys) == 1:
+        least = min(used.get(p, 0) for p in range(len(items)))
+        place = rnd.choice([p for p in range(len(items)) if used.get(p, 0) == least])
+        used[place] = used.get(place, 0) + 1
+        rest.insert(place, items[keys[0]])
+    return block[:m.start(2)] + "".join(indent + it for it in rest) + block[m.end(2):]
+
+
+def _qtext(block: str) -> str:
+    m = re.search(r'<p class="q">(.*?)</p>', block, re.S) or re.search(r"<p>(.*?)</p>", block, re.S)
+    raw = m.group(1) if m else block
+    return " ".join(html.unescape(re.sub(r"<[^>]+>", "", raw)).split())
+
+
+def interactive(folder: Path):
+    import hashlib
+    for _, _, page in ordered_pages(folder):
+        text = page.read_text(encoding="utf-8")
+        new = text
+        if 'src="explainers.js"' not in new:
+            link = '<link rel="stylesheet" href="explainers.css">'
+            if link in new:
+                new = new.replace(link, link + '\n<script src="explainers.js" defer></script>', 1)
+            else:
+                print(f"WARNING  {page.name}: no explainers.css link, so explainers.js isn't added")
+        used: set[str] = set(re.findall(r'<div class="(?:quiz|choice|answer-field)"[^>]*\bid="([^"]+)"', new))
+        places: dict = {}  # where the right or recommended option sits, over this page's blocks so far
+        pos = 0
+        while True:
+            m = QBLOCK.search(new, pos)
+            if not m:
+                break
+            kind, attrs = m.group(1), m.group(2)
+            end = _block_end(new, m.start())
+            block = new[m.start():end]
+            line = new.count("\n", 0, m.start()) + 1
+            where = f"{page.name}:{line} ({kind})"
+            if 'id="' not in attrs:
+                base = {"quiz": "t-", "choice": "q-", "answer-field": "n-"}[kind]
+                base += hashlib.sha1(_qtext(block).encode("utf-8")).hexdigest()[:8]
+                qid, k = base, 2
+                while qid in used:
+                    qid, k = f"{base}-{k}", k + 1
+                used.add(qid)
+                block = block.replace(m.group(0), f'<div class="{kind}" id="{qid}"{attrs}>', 1)
+                if kind != "answer-field":
+                    block = _shuffle_once(block, qid, places)
+            elif _key_place(block) is not None:
+                places[_key_place(block)] = places.get(_key_place(block), 0) + 1
+            # the rules each kind must follow
+            role = re.search(r'data-role="([^"]+)"', attrs)
+            role = role.group(1) if role else None
+            if kind == "quiz":
+                opts = re.findall(r"<li\b", block)
+                if role not in ("turn", "test"):
+                    print(f'WARNING  {where}: a test needs data-role="turn" (before the fix) or "test"')
+                if len(opts) < 3:
+                    print(f"WARNING  {where}: a test needs at least 3 options, has {len(opts)}")
+                if len(re.findall(r'<li class="right"', block)) != 1:
+                    print(f'WARNING  {where}: a test needs exactly one <li class="right">')
+                if block.count('class="why"') != len(opts):
+                    print(f'WARNING  {where}: every option needs its <span class="why">')
+                # the longest option is the right one: a reader learns that, and stops thinking
+                sizes = []
+                for li in re.findall(r"<li\b([^>]*)>(.*?)</li>", block, re.S):
+                    own = re.sub(r'<span class="(?:why|num)">.*?</span>', "", li[1], flags=re.S)
+                    sizes.append(('class="right"' in li[0], len(html.unescape(re.sub(r"<[^>]+>", "", own)).strip())))
+                wrong = [n for r, n in sizes if not r]
+                right = [n for r, n in sizes if r]
+                if right and wrong and right[0] > 30 and right[0] > 1.25 * max(wrong):
+                    print(f"WARNING  {where}: the right option is much the longest ({right[0]} characters, the "
+                          f"others at most {max(wrong)}): shorten it or give the wrong ones the same detail")
+            elif kind == "choice":
+                if role != "question":
+                    print(f'WARNING  {where}: a question needs data-role="question"')
+                if len(re.findall(r'<(?:li|tr) class="rec"', block)) != 1:
+                    print(f'WARNING  {where}: a question needs exactly one option with class "rec"')
+                if 'class="rec-why"' not in block:
+                    print(f'WARNING  {where}: a question needs <p class="rec-why">: why I recommend it')
+                if re.search(r"\bDefault\b", re.sub(r'<p class="rec-why">.*?</p>', "", block, flags=re.S)):
+                    print(f"WARNING  {where}: \"Default\" shows the recommendation before the reader picks")
+            new = new[:m.start()] + block + new[end:]
+            pos = m.start() + len(block)
+        if new != text:
+            page.write_text(new, encoding="utf-8")
+            print(f"answers  {page.name}")
 
 
 def render(folder: Path, force: bool):
@@ -540,6 +688,7 @@ def main():
     sync_css(folder)
     render(folder, "--force" in sys.argv)
     inline(folder)
+    interactive(folder)
     color_pages(folder)
     summarize(folder)
     enumerate_pages(folder)

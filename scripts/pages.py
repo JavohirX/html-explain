@@ -41,12 +41,12 @@ D2_MARK = re.compile(r"^\s*d2:([\w-]+)")
 
 # What a block is, as the reader sees it in its label. Boxes take no name; lists, tables and code do.
 BOX_ROLES = {"decided": "Decided", "question": "Question for {who}", "open": "Open",
-             "changed": "Changed", "next": "Next problem"}
+             "changed": "Changed", "next": "Next problem", "turn": "Your turn", "test": "Test"}
 LIST_ROLES = {"steps": "Steps", "options": "Options", "problems": "Problems", "rules": "Rules",
               "reasons": "Reasons", "examples": "Examples", "parts": "Parts", "decisions": "Decisions",
               "table": "Table"}
 FIGURE_TYPES = {"overview": "Overview", "illustration": "Illustration", "complement": "Complement"}
-BOX_CLASSES = {"note"}
+BOX_CLASSES = {"note", "quiz", "choice", "answer-field"}
 COLLECTION_CLASSES = {"grid", "grid2", "compare", "limits", "gloss", "table-box", "flows", "now3"}
 
 
@@ -208,15 +208,63 @@ def role_problems(c, fig_plan: dict) -> list:
     return msgs
 
 
-def check_questions(section) -> list[tuple[str, str]]:
-    """(question, folded answer) for each "Check: …" footnote that is a direct child of the section."""
+def quiz_options(box) -> list:
+    """The options of a test or a question: the rows of ul.opts, or of its table."""
+    ul = box.find("ul", class_="opts")
+    if ul is not None:
+        return ul.find_all("li", recursive=False)
+    body = box.find("tbody")
+    return body.find_all("tr", recursive=False) if body is not None else []
+
+
+def option_text(opt, keep_why: bool = False) -> tuple[str, str]:
+    """(its number, its text) without the why, unless asked."""
+    t = copy.copy(opt)
+    num = t.find("span", class_="num")
+    n = num.get_text().strip() if num else ""
+    for span in t.find_all("span", class_="num"):
+        span.decompose()
+    if not keep_why:
+        for span in t.find_all(class_="why"):
+            span.decompose()
+    cells = t.find_all("td")
+    text = " | ".join(" ".join(c.get_text().split()) for c in cells) if cells else " ".join(t.get_text().split())
+    return n, text
+
+
+def test_text(box) -> tuple[str, str]:
+    """A test as (question with its options, the right option and every why)."""
+    q = box.find(class_="q")
+    lines = [plain(q) if q else ""]
+    pre = box.find("pre")
+    if pre is not None:
+        lines.append(pre.get_text().strip("\n"))
+    right, whys = "", []
+    for opt in quiz_options(box):
+        n, text = option_text(opt)
+        lines.append(f"option {n}: {text}")
+        why = opt.find(class_="why")
+        whys.append(f"{n}: {' '.join(why.get_text().split()) if why else ''}")
+        if "right" in (opt.get("class") or []):
+            right = f"{n} ({text})"
+    return " / ".join(lines), f"right: {right}. Why each: " + " ".join(whys)
+
+
+def check_questions(section, tests_only: bool = False) -> list[tuple[str, str]]:
+    """(question, folded answer) for each "Check: …" footnote and each test that is a direct child of
+    the section. With tests_only, only end-of-chapter checks count (not "your turn" tests)."""
     found = []
-    for d in section.find_all("details", recursive=False):
-        summary = d.find("summary")
-        q = plain(summary) if summary else ""
-        if CHECK.match(q):
-            body = d.find("div")
-            found.append((q, plain(body) if body else ""))
+    for tag in section.find_all(["details", "div"], recursive=False):
+        if tag.name == "details":
+            summary = tag.find("summary")
+            q = plain(summary) if summary else ""
+            if CHECK.match(q):
+                body = tag.find("div")
+                found.append((q, plain(body) if body else ""))
+        elif "quiz" in (tag.get("class") or []):
+            if tests_only and tag.get("data-role") != "test":
+                continue
+            found.append(test_text(tag))
     return found
 
 
@@ -244,7 +292,7 @@ def lint(plan: dict, chs: list[Chapter]) -> list[str]:
         terms = entry.get("terms", {})
         if len(terms) > 3:
             msgs.append(f"chapter {c.n} (#{c.id}) plans {len(terms)} new terms; 3 at most")
-        checks = len(check_questions(c.section))
+        checks = len(check_questions(c.section, tests_only=True))
         if c is not numbered[-1] and not 1 <= checks <= 2:
             msgs.append(f"chapter {c.n} (#{c.id}) has {checks} check questions; 1 or 2 expected")
         figs = entry.get("figures", {})
@@ -366,6 +414,32 @@ def render(node, out: list[str], hide_answers: bool = False, prefix: str = "") -
         flush()
         if name == "svg":
             out.append(_svg_words(child))
+        elif cls & {"quiz", "choice"}:
+            role = {"turn": "Your turn (a test)", "test": "Test", "question": "Question for the reader"}
+            q = child.find(class_="q")
+            out.append(f"{role.get(child.get('data-role'), 'Test')}: {plain(q) if q else ''}")
+            pre = child.find("pre")
+            if pre is not None:
+                out.append("```\n" + pre.get_text().strip("\n") + "\n```")
+            for opt in quiz_options(child):
+                n, text = option_text(opt)
+                out.append(f"- option {n}: {text}")
+            if not hide_answers:
+                for opt in quiz_options(child):
+                    n, text = option_text(opt)
+                    classes = opt.get("class") or []
+                    why = opt.find(class_="why")
+                    if "right" in classes:
+                        out.append(f"Right answer (shown after a pick): {n}")
+                    if why is not None:
+                        out.append(f"Why {n} (shown after a pick): {' '.join(why.get_text().split())}")
+                    if "rec" in classes:
+                        out.append(f"My recommendation (shown only after the reader picks): {n}")
+                rec_why = child.find(class_="rec-why")
+                if rec_why is not None:
+                    out.append(f"Why (shown only after the reader picks): {plain(rec_why)}")
+        elif "answer-field" in cls:
+            out.append(f"A note field for the reader: {plain(child)}")
         elif name == "details":
             summary = child.find("summary")
             q = " ".join(summary.get_text().split()) if summary else ""

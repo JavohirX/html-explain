@@ -16,6 +16,7 @@
   --code-kw:#1F4F8F; /* code only: keywords, flags */
   --code-str:#2E6B34;/* code only: strings */
   --code-num:#7A3E9D;/* code only: numbers */
+  --right:#2E6B34;   /* tests only: the right answer, once found. A wrong pick is muted, never red */
   --xl:34px;--l:22px;--m:16px;--s:13px;
   /* aliases so older markup keeps working */
   --t2:var(--muted);--t3:var(--muted);
@@ -139,6 +140,38 @@ pre.code :is(.s,.s1,.s2,.sa,.sb,.sc,.sd,.se,.sh,.si,.sx,.dl){color:var(--code-st
 pre.code :is(.m,.mi,.mf,.mh,.mo,.il){color:var(--code-num)}
 pre.code :is(.c,.c1,.cm,.ch,.cs,.cp,.gp){color:var(--muted)}
 pre.code :is(.nf,.nc,.fm,.cmd){font-weight:700}
+
+/* tests (.quiz) and questions (.choice) answered in the page; explainers.js remembers them */
+.quiz,.choice,.answer-field{background:var(--surf);border:1px solid var(--line);padding:14px 18px;display:flex;flex-direction:column;gap:10px}
+.quiz > .label-line,.choice > .label-line,.answer-field > .label-line{margin-bottom:-2px}
+.quiz .q,.choice .q{font-weight:700}
+.quiz > p,.choice > p,.answer-field > p{margin:0}
+.opts{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.opts > li{border:1px solid var(--line);background:var(--bg);padding:8px 12px}
+.quiz .opts > li,.choice .opts > li,.choice tbody > tr{cursor:pointer}
+.quiz .opts > li:hover,.choice .opts > li:hover,.choice tbody > tr:hover > td{background:var(--tint)}
+.quiz.done .opts > li{cursor:default;background:var(--bg)}
+.opts .why{display:none;margin-top:6px}
+.quiz li.picked .why{display:block}
+.quiz.done .why{display:block;color:var(--muted);font-size:var(--s)}
+.quiz.done li.is-right .why{color:var(--text);font-size:var(--m)}
+.quiz li.is-wrong{color:var(--muted)}
+.quiz li.is-right{border-color:var(--right)}
+.choice table{table-layout:fixed}  /* the tag that appears after a pick must not move the columns */
+.choice li.picked,.choice tr.picked > td{background:var(--tint)}
+.choice li.picked{border-color:var(--text)}
+.rec-tag{font-size:var(--s);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--accent);margin-left:8px;white-space:nowrap}
+.rec-why{display:none}
+.choice.answered .rec-why{display:block}
+.verdict{font-weight:700}
+.verdict:empty{display:none}
+.verdict.ok{color:var(--right)}
+.verdict.no{color:var(--muted)}
+.answer-note{width:100%;font:inherit;font-size:var(--s);color:var(--text);border:1px solid var(--line);background:var(--bg);padding:6px 8px;resize:vertical}
+.side .answers{display:flex;flex-direction:column;gap:8px;font-size:var(--s);position:sticky;bottom:0;background:var(--bg);border-top:1px solid var(--line);padding:10px 0 4px}  /* pinned to the sidebar's bottom: progress and copy stay in view */
+.side .answers .buttons{display:flex;flex-wrap:wrap;gap:6px}
+.side .answers button{font:inherit;font-size:var(--s);color:var(--text);background:var(--surf);border:1px solid var(--line);padding:4px 10px;cursor:pointer}
+.side .answers button:hover{border-color:var(--muted)}
 
 /* footnotes: an expandable explanation right under the line that uses a term the reader may not know */
 details.fn{margin-top:-8px}

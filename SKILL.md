@@ -12,6 +12,7 @@ The user learns new systems from these pages. **Their background:** lots of Leet
 ```
 <project>/docs/                      (or wherever the user names)
   explainers.css                     copied by build.py; never edit it per page
+  explainers.js                      copied by build.py: tests and questions answered in the page
   topic-a.html  topic-b.html         one topic per page, lowercase file names
   diagrams/
     _theme.d2                        copied by build.py
@@ -22,6 +23,7 @@ The user learns new systems from these pages. **Their background:** lots of Leet
 Skill assets:
 - `assets/template.html`: the page skeleton. Always start from it.
 - `assets/explainers.css`: the whole design system.
+- `assets/explainers.js`: answers in the page, remembered per page in the browser (see **Tests and questions in the page**).
 - `assets/theme.d2`: diagram classes.
 - `assets/fonts/`: the fonts D2 embeds in diagrams.
 
@@ -52,14 +54,14 @@ The skill is a git repo (`github.com/JavohirX/html-explain`, private). Commit ch
    - **The job of each chapter:** the one statement the reader leaves the chapter with, written as that statement ("A test case is a basket in and the ТЗ's exact numbers out"), not as "the reader knows…". Prefer one claim; if it takes two, the cold read checks each. Every item in the chapter serves the job. A detail the job doesn't need goes into a footnote or out. Three checks against the job:
      - **The frame keeps its promise.** If the chapter uses a frame (an exam, a LeetCode test case, a recipe), list what the frame makes the reader expect, and show each part with the running example's numbers. A test case promises an input and an expected output, so show both. If you can't, drop the frame.
      - **The running example leads.** Show it first and whole. The other cases come after it, as "four more like it". A full source table is rarely the job.
-     - **The check question tests the job.** Write it from the job sentence, before the prose. If the easy question to ask is about a detail, that detail is too big on the page.
+     - **The end-of-chapter test tests the job.** Write it from the job sentence, before the prose. If the easy question to ask is about a detail, that detail is too big on the page.
    - **The running example:** one concrete thing (one product, one file, one person's day) with real numbers, followed through every chapter.
    - **New terms per chapter:** list them. At most 3 per chapter. If a chapter has more, split it or cut the terms the story doesn't need. A footnote doesn't make a term free: it still counts.
    - **The pictures per chapter,** each with a type and a job (the one thing the picture alone must show):
      - **Overview, in every chapter:** where this chapter's piece sits in the whole. It's one map per page that grows chapter by chapter: the same cells in the same places, with this chapter's new piece in `rust`. It goes near the end of the chapter, after the fix, as the "so far" picture. It never replaces the text: the text alone must still teach the chapter's job.
      - **Illustration:** one narrow case with the running example's numbers (a timeline, one product's basket).
      - **Complement:** something that's easier seen than read: an order, states and moves, who depends on whom. The cold read checks that it adds what the text doesn't.
-   - **The check questions:** 1–2 per chapter, and their answers.
+   - **The tests** (see **Tests and questions in the page**): 1–2 per chapter at its end, with their options and the right one; and in each problem chapter, one "your turn" test just before the fix.
    - **Just in time:** cut anything the reader doesn't need yet. If something gets built next week, it gets one line now and its own page on the day it's built.
 3. **Copy `assets/template.html`** into the folder, and **write the plan into it before any prose**:
    - Set `<title>`: "X Explained", or the question itself.
@@ -69,20 +71,20 @@ The skill is a git repo (`github.com/JavohirX/html-explain`, private). Commit ch
 
    **Every page has a summary at the top.** A reader can't recall a detail from a page two weeks old, but they can reread its summary in a minute. When you edit an older page that has no plan, add its plan first.
 
-   **Adding a plan to an older page:** go page by page in reading order, and treat every later page as if it doesn't exist yet, because the cold read gives each page only the pages before it. Write each job from what the chapter already teaches, not from what you wish it taught. Add the missing check questions. Then build, cold-read and fix as in steps 6–8.
+   **Adding a plan to an older page:** go page by page in reading order, and treat every later page as if it doesn't exist yet, because the cold read gives each page only the pages before it. Write each job from what the chapter already teaches, not from what you wish it taught. Add the missing tests. Then build, cold-read and fix as in steps 6–8.
 4. **Write the chapters,** following **Writing** below, each one serving its job. **Every block that isn't a plain paragraph says what it is**, so the reader never has to work out whether a box is a decision, a question for them or a bridge. Give it `data-role`, and lists and tables a `data-name`; `build.py` writes the label next to the number ("6-8 QUESTION FOR SVETLANA", "6-6 RULES what every setting declares"):
    - **Boxes** (`.note`): `decided`, `question` (with `data-who="Svetlana"`; "you" by default), `open` (decided later, and where), `changed` (see **Changed facts** in step 8), `next` (the bridge to the next problem). Don't repeat the label in the text ("Decided: …").
    - **Lists, cards and limits:** `steps` (in order), `options` (pick one), `problems` (all at once), `rules` (all apply), `reasons`, `examples`, `parts`, `decisions`. The kind says why it's a list; the name says what its items are.
    - **Tables:** `table`, with a name that says what one row is: "One row per day: what we build, and when the day is done".
    - **Code sketches:** `figure data-role="code"` with a name. **Pictures** take their label from the plan ("OVERVIEW <job>"), with a colour key under the caption, made from the classes the diagram uses. Don't describe the colours in the caption too.
-   - Footnotes are labelled "Footnote" by `build.py`; check questions already start with "Check:".
+   - Footnotes are labelled "Footnote" by `build.py`. Tests (`.quiz`) take `data-role="turn"` (before a fix: "YOUR TURN") or `"test"` (the chapter's end: "TEST"); questions for the reader (`.choice`) and note fields (`.answer-field`) take `data-role="question"`.
 5. **Write diagrams** as `diagrams/NAME.d2` (see below). Place each one in the page as `<!-- d2:NAME "alt sentence" --><!-- /d2 -->` inside `<div class="fig-box">`. Don't put double quotes inside the alt text. Never hand-place SVG coordinates: that's what caused overlapping labels before. The alt sentence says what the picture shows: the cold reader gets only that and the words drawn in it.
-6. **Build:** `python ~/.claude/skills/html-explain/scripts/build.py <folder>`. Fix every FAILED line, and every WARNING about the page you're working on: a chapter without a job, more than 3 new terms, a chapter without 1–2 check questions, a chapter without an overview picture, a picture without a type and job, a box, list or table without a role.
+6. **Build:** `python ~/.claude/skills/html-explain/scripts/build.py <folder>`. Fix every FAILED line, and every WARNING about the page you're working on: a chapter without a job, more than 3 new terms, a chapter without 1–2 end-of-chapter tests, a chapter without an overview picture, a picture without a type and job, a box, list or table without a role, a test or question that breaks the rules of **Tests and questions in the page**.
 7. **Look once:** `python ~/.claude/skills/html-explain/scripts/check.py <page.html> <scratchpad>/check`. Read the screenshots, fix what they show in one pass, rebuild, and stop. Don't loop.
    **Then reread the text once as the user,** someone who knows only LeetCode. Mark every word they'd stop at and every sentence they'd read twice. Fix each one: explain it, split it, or cut it. Count each chapter's new terms again (3 at most).
 8. **Cold read:** `python ~/.claude/skills/html-explain/scripts/coldread.py <page.html> <scratchpad>/coldread`, then read `repeated.md` first: per chapter, the job next to what each run learned, the check answers, and only the findings two or more runs share. Open `report.md` when you need a single run's full answer.
    - **Why:** the writer can't un-know what they meant, so they fill every gap without noticing, and the word-level checks pass anyway. Chapter 1 of "Monday, part 1" framed the ТЗ's five products as test cases, then showed only outputs, counted them, and asked why one brand has 5 prices and another 4. Every sentence passed the rules. In the cold read, none of 3 runs mentioned any input, and one summed it up as "how many numbers each product has". After the rewrite, all 3 learned "a basket of inputs, and the exact numbers that must come out".
-   - **What the reader gets:** what a person would hold at that point. The summaries of the older pages, the previous page in full, and this page from the top through the chapter, with the chapter's pictures as real images. It doesn't get this page's summary, because that holds the answer key, or the chapter's check answers, because it answers those itself. It runs with no tools, no CLAUDE.md, no memory and an empty folder, 3 times per chapter, and answers what it learned, the check questions, each term and where it learned it, what it assumed, what it would ask, and what each picture showed it.
+   - **What the reader gets:** what a person would hold at that point. The summaries of the older pages, the previous page in full, and this page from the top through the chapter, with the chapter's pictures as real images. It doesn't get this page's summary, because that holds the answer key, or the chapter's test answers, because it answers those itself. It runs with no tools, no CLAUDE.md, no memory and an empty folder, 3 times per chapter, and answers what it learned, the tests, each term and where it learned it, what it assumed, what it would ask, and what each picture showed it.
    - **Pictures get two more reads,** because you can't see whether a reader uses a picture, only what's lost without it. **Alone:** every picture by itself, with its type and colour key but not its job. **Without:** each complement picture removed from its chapter. `--text-only` skips both, for quick rereads after a text fix.
    - **Judge each chapter:**
      - **The job is learned:** each claim of the job shows up in "what it learned" in at least 2 of 3 runs. The main point is only a hint: readers tend to pick the chapter's finish line ("Monday is over when all 22 pass") as the main point.
@@ -171,7 +173,10 @@ The user answers pages by number ("5-6-5 ok", "9-2 no") instead of quoting text,
 | `figure` with `.fig-box` and `figcaption` | diagrams; type, job and key come from the plan's `figures` |
 | `figure` > `.fig-box` > `pre.code` | a short code sketch, only when the reader truly needs to see code; always with a figcaption, `data-role="code"` and a `data-name`. Every block names its language: `<pre class="code" data-lang="python"><code>…</code></pre>`, with `python`, `toml`, `sql`, `shell` (a line starting with `> ` or `$ ` is a command, other lines are its output), `tree` (a folder tree: each line's description after two spaces is muted) or `text` (no colors). `build.py` colors it; put no markup inside. Code and its output are two blocks in one `.fig-box` (a line divides them) |
 | `b.red` | a fact that must never be missed (see **Bold and red**). `build.py` also lists every one in a "Don't miss" box at the top of the page |
-| `details.fn` | a footnote: `<details class="fn"><summary>What's X?</summary><div><p>…</p></div></details>`, placed right after the paragraph it explains (never inside a `<p>`), or inside an `li` or a `.limit` after its text. As a section's direct child it gets its own reference number, so the user can say "4-3 still unclear". Also used for check questions: the summary is "Check: …?" and the body is the answer |
+| `details.fn` | a footnote: `<details class="fn"><summary>What's X?</summary><div><p>…</p></div></details>`, placed right after the paragraph it explains (never inside a `<p>`), or inside an `li` or a `.limit` after its text. As a section's direct child it gets its own reference number, so the user can say "4-3 still unclear". Older pages also used it for check questions ("Check: …?", the answer folded); new pages use `.quiz` |
+| `.quiz` | a test: `<p class="q">`, an optional `pre.code`, then `<ul class="opts">` with 3–4 `<li>`, exactly one `li.right`, and a `<span class="why">` in every option. `data-role="turn"` or `"test"` |
+| `.choice` | a question for the reader: `<p class="q">`, a line on why it matters, the options as a `.table-box` (one `<tr>` each, columns Option / For / Against) or as `ul.opts`, exactly one option with class `rec` (my recommendation), and `<p class="rec-why">`. `data-role="question"` |
+| `.answer-field` | a free note the reader writes in the page: `<div class="answer-field" data-role="question" data-placeholder="For example: …"><p>What to write.</p></div>` |
 | `ol.steps`, `ul.tight` | lists |
 | `.eyebrow` | the small label above each h2 ("2 · VOCABULARY") |
 | `.tag` or `.tag.now` | text-only status labels |
@@ -273,12 +278,13 @@ Good: "On Monday we write the calculator. On Tuesday we write the code that fill
 **Teach just in time.** A page teaches only what the reader needs now. Something built next week gets one line now and its own page on that day. A plan page fits on about one screen.
 
 **Each chapter has the same rhythm:**
-1. **So far:** one bold-led line (`<p><b>So far:</b> …</p>`) or the growing picture. A reader who lost a chapter can pick the thread back up here. Skip it only in the first chapter.
+1. **So far:** one bold-led line (`<p><b>So far:</b> …</p>`) or the growing picture. A reader who lost a chapter can pick the thread back up here. Skip it only in the first chapter. **Vary how chapters open**, so the page doesn't read as one template stamped ten times: a scene ("Monday, 15:00. Two tests just broke."), a bug hunt (a wrong number, and where it came from), a question to the reader, or one striking number ("60 000 trips to the database"). The so-far line can follow the opening instead of leading it.
 2. **The problem**, as a concrete scenario with real names and numbers from the project: "the analyst edits the rate halfway through, so 3 000 products use the old rate and 3 000 the new one". Use `.limits` when several things go wrong at once.
-3. **The fix**, in plain words, as steps (`ol.steps`), with the running example's numbers in the steps.
-4. **The name**, optionally, only after the idea has been explained: "Programmers call this a snapshot." Put a long aside in `.small`.
-5. **Check yourself:** 1–2 questions the reader answers from memory, each a `details.fn` whose summary is the question ("Check: on Tuesday 1.50.100 gives 10 630 ₸. Where do you look first?") and whose body is the answer. Ask "why?" or "what happens if…?" with numbers, never "what is X called?". Reading alone doesn't stick; recalling does.
-6. **The bridge**, a `.note` that names the next problem the fix leads to: "Good. But some products depend on others."
+3. **Your turn**, in a problem chapter: a `.quiz data-role="turn"` just before the fix. The reader guesses the fix from the problem they just felt. The right option is the fix in the reader's words, and its why ends "That's the fix below." Guessing first, even wrong, makes the fix stick.
+4. **The fix**, in plain words, as steps (`ol.steps`), with the running example's numbers in the steps.
+5. **The name**, optionally, only after the idea has been explained: "Programmers call this a snapshot." Put a long aside in `.small`.
+6. **The test:** 1–2 `.quiz data-role="test"` the reader answers from memory ("On Tuesday 1.50.100 gives 10 630 ₸. Where do you look first?"). Ask "why?" or "what happens if…?" with numbers, never "what is X called?". Reading alone doesn't stick; recalling does.
+7. **The bridge**, a `.note` that names the next problem the fix leads to: "Good. But some products depend on others."
 
 **Rules:**
 - **State the goal first.** The reader must always know where the page is going and why they're reading the current chapter.
@@ -291,6 +297,26 @@ Good: "On Monday we write the calculator. On Tuesday we write the code that fill
 - No filler, no marketing tone, active voice.
 - Keep original-language terms (e.g. a vendor's Russian terms) next to the plain names, since those are what the reader will meet in docs and APIs.
 - Don't guess pronouns for real people named in project documents. Use their name, their role or "they".
+
+## Tests and questions in the page
+
+The reader answers in the page, and `assets/explainers.js` (copied by `build.py`) remembers every answer in this browser, per page, across reloads. The sidebar shows the progress, a **Copy for Claude** button and **Start over**. The copied text lists, by reference number, each test not right on the first try with its wrong picks, and each question's pick, my recommendation and the reader's note, so the user can paste it into a new session.
+
+**Tests** (`.quiz`): pick one option. A wrong pick shows its why and lets the reader try again; the first try counts. Once the right one is found, every option shows its why.
+- **3 or 4 options.** Every wrong option is a mistake a real reader might make, with real numbers from the page ("the import", when on Tuesday there's no import yet). No jokes, no "all of the above", no option that's wrong only by its wording.
+- **Every option gets a why** of 1–3 short sentences. A wrong option's why says what's wrong with it and points back at the right idea. The right one's why gives the reasoning, not "Correct!".
+- **The right option must not stand out.** Not the longest, not the only one with numbers, not the only careful one. Give the wrong options the same detail, or shorten the right one. `build.py` warns when the right one is much the longest.
+- **Write the right option first, as `li.right`.** `build.py` moves it once, when it gives the test its id, to the place used least so far on that page (ties at random), and shuffles the rest. After that the order and the reference numbers stay fixed. Rebuilds don't reshuffle; to reshuffle a block, delete its `id`.
+- A test that needs code to look at puts a `pre.code` after the question ("Which line is wrong?").
+
+**Questions for the reader** (`.choice`): the user wants to decide without being steered.
+- **My recommendation stays hidden until the reader picks.** Mark it with class `rec` and write the reasons in `p.rec-why`; both show only after a pick. The reader can change the pick and add a note.
+- **Nothing before the pick may give it away:** no "Default", no "Until you answer", no recommendation in a summary table, no check or chapter that assumes it. A check after a question asks about each option ("What does E-0042 get with each of the three?"). Name options by what they do, never by place ("the third option"): the places are shuffled. `build.py` warns about "Default".
+- **For and Against are fair to every option.** My own pick gets its real Against.
+- After all the questions (a "rows with my choices" chapter), the page may say "with the options I recommended".
+- **The answer field** (`.answer-field`) takes free text: "Disagree with any decision above? Write its number and why."
+
+**Later, not built yet:** pictures the reader can click (show one layer of the map at a time, step through a timeline). Worth it for complement pictures that show a sequence.
 
 ## A chapter done right
 
@@ -315,7 +341,16 @@ This is the model. It's chapter 2 of the Premiera page "Next week, day by day", 
     <div class="fig-box"><!-- d2:suspects "…" --><!-- /d2 --></div>
     <figcaption>Top: everything built at once. When the price is wrong, all six parts are suspects. Bottom: Tuesday, when we build one day at a time. The calculator already passed on Monday. Only the two new parts are suspects.</figcaption>
   </figure>
-  <!-- 3. The fix: steps, each with the running example's numbers -->
+  <!-- 3. Your turn: the reader guesses the fix before reading it -->
+  <div class="quiz" data-role="turn">
+    <p class="q">10 640 ₸ instead of 10 620 ₸, and six parts that could be at fault. How would you build, so a wrong number has only one or two suspects?</p>
+    <ul class="opts">
+      <li class="right">Add the parts one day at a time, and test 1.50.100 every day.<span class="why">Parts that passed yesterday aren't suspects. A wrong number points at today's new parts. That's the fix below.</span></li>
+      <li>Build all six at once, more carefully.<span class="why">Care doesn't say where 10 640 ₸ came from. 523 ₽ and 6.51 give the same wrong number.</span></li>
+      <li>Build all six, and test only the final price in the 1С file.<span class="why">That's what gave six suspects: the final number can't say which part broke it.</span></li>
+    </ul>
+  </div>
+  <!-- 4. The fix: steps, each with the running example's numbers -->
   <p>The fix: add the parts one day at a time, and test 1.50.100 every day.</p>
   <ol class="steps">
     <li><b>Monday:</b> the calculator alone. We type the basket by hand. It must say 10 620 ₸. If it doesn't, the mistake is in the calculator. It's the only part.</li>
@@ -325,11 +360,16 @@ This is the model. It's chapter 2 of the Premiera page "Next week, day by day", 
   <p>Each day adds new parts next to parts that already passed. So when a number breaks, we know where to look: in today's parts.</p>
   <!-- explain the order: why this and not the obvious alternative -->
   <p>Why the middle and not the top? The calculator needs only a basket, and we can type that by hand. Every other part needs its neighbour. So the calculator comes first, and the other parts grow around it.</p>
-  <!-- 5. Check: a what-happens-if question with numbers; the answer is folded -->
-  <details class="fn"><summary>Check: on Tuesday 1.50.100 comes out as 10 640 ₸. On Monday it was 10 620 ₸. The calculator's code did not change. Where do you look first?</summary><div>
-    <p>At the basket. The same calculator with the same basket gives the same answer. So Tuesday's basket must differ from Monday's. Compare them number by number. Maybe the database kept the rate as 6.51.</p>
-  </div></details>
-  <!-- 6. Bridge -->
+  <!-- 6. Test: a what-happens-if question with numbers; every option has its why -->
+  <div class="quiz" data-role="test">
+    <p class="q">On Tuesday 1.50.100 comes out as 10 640 ₸. On Monday it was 10 620 ₸. The calculator's code did not change. Where do you look first?</p>
+    <ul class="opts">
+      <li class="right">At the basket.<span class="why">The same calculator with the same basket gives the same answer. So Tuesday's basket must differ from Monday's. Compare them number by number. Maybe the database kept the rate as 6.51.</span></li>
+      <li>At the calculator's rounding.<span class="why">The calculator passed on Monday, and its code didn't change. It isn't a suspect.</span></li>
+      <li>At the import.<span class="why">There's no import on Tuesday. The five products' numbers are typed into the database by hand.</span></li>
+    </ul>
+  </div>
+  <!-- 7. Bridge -->
   <p class="note">Here is the whole week as a table: what we build each day, and how we know it works.</p>
 </section>
 ```

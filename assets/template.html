@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600&family=Open+Sans:wght@400;700&family=Cousine:wght@400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="explainers.css">
+<script src="explainers.js" defer></script>
 <!-- The plan, written before any prose. Keys are the chapter section ids. A job is the one statement
      the reader leaves the chapter with. build.py turns this into the summary at the top and checks the
      rules; coldread.py uses each job as the answer key. -->
@@ -74,9 +75,15 @@
     <div class="fig-box"><!-- d2:map-1 "One sentence saying what the map shows." --><!-- /d2 --></div>
     <figcaption>What to notice. Don't describe the colours: the key under it does.</figcaption>
   </figure>
-  <details class="fn"><summary>Check: a question built from this chapter's job, with the running example's numbers</summary><div>
-    <p>The answer, in two to four short sentences.</p>
-  </div></details>
+  <!-- A test: pick one option. Write the right one first; build.py moves it once, when it gives the test its id. -->
+  <div class="quiz" data-role="test">
+    <p class="q">A question built from this chapter's job, with the running example's numbers?</p>
+    <ul class="opts">
+      <li class="right">The right answer, short.<span class="why">Why it's right, in one to three short sentences.</span></li>
+      <li>A wrong answer a real reader might pick, with real numbers.<span class="why">Why it's wrong.</span></li>
+      <li>Another tempting wrong answer.<span class="why">Why it's wrong.</span></li>
+    </ul>
+  </div>
   <p class="note" data-role="next">The question this raises, which the next chapter answers.</p>
 </section>
 
@@ -93,6 +100,15 @@
   <div class="limits" data-role="problems" data-name="what goes wrong">
     <div class="limit"><p class="l">What goes wrong.</p><p class="r">A concrete scenario with real names and numbers.</p></div>
   </div>
+  <!-- Your turn: the reader guesses the fix before reading it. The right option is the fix below. -->
+  <div class="quiz" data-role="turn">
+    <p class="q">The problem in one line, with its numbers. What would remove it?</p>
+    <ul class="opts">
+      <li class="right">The fix, in the reader's words.<span class="why">Why it works. "That's the fix below."</span></li>
+      <li>A fix that helps a little but misses the point.<span class="why">What it leaves broken, with numbers.</span></li>
+      <li>The obvious idea that fails.<span class="why">Why it fails.</span></li>
+    </ul>
+  </div>
   <p>The fix:</p>
   <ol class="steps" data-role="steps" data-name="the fix">
     <li>Step one of the fix, in plain words.</li>
@@ -106,9 +122,29 @@
     <div class="fig-box"><!-- d2:map-2 "The map from chapter 1, with this chapter's piece added." --><!-- /d2 --></div>
     <figcaption>What changed since the last chapter's map.</figcaption>
   </figure>
-  <details class="fn"><summary>Check: a "why?" or "what happens if…?" question with numbers from the running example</summary><div>
-    <p>The answer, in two to four short sentences.</p>
-  </div></details>
+  <div class="quiz" data-role="test">
+    <p class="q">A "why?" or "what happens if…?" question with numbers from the running example?</p>
+    <ul class="opts">
+      <li class="right">The right answer.<span class="why">Why.</span></li>
+      <li>A wrong answer.<span class="why">Why not.</span></li>
+      <li>A wrong answer.<span class="why">Why not.</span></li>
+    </ul>
+  </div>
+  <!-- A question for the reader: options in a table (or ul.opts). My pick has class="rec" and its reasons are
+       in p.rec-why: both stay hidden until the reader picks. Never write "Default" or argue for it before. -->
+  <div class="choice" data-role="question">
+    <p class="q">The question, in one line?</p>
+    <p>Why it matters, with numbers.</p>
+    <div class="table-box"><table>
+      <thead><tr><th>Option</th><th>For</th><th>Against</th></tr></thead>
+      <tbody>
+        <tr class="rec"><td>My pick, described by what it does.</td><td>What it gives.</td><td>What it costs.</td></tr>
+        <tr><td>Another option.</td><td>What it gives.</td><td>What it costs.</td></tr>
+      </tbody>
+    </table></div>
+    <p class="rec-why">Why I'd pick it, in two to four sentences. Shown only after the reader picks.</p>
+  </div>
+  <!-- A free answer: <div class="answer-field" data-role="question" data-placeholder="For example: …"><p>What to write.</p></div> -->
   <!-- Other boxes: data-role="decided", "question" (data-who="Svetlana"), "open", "changed". -->
   <p class="note" data-role="next">The next problem this fix leads to.</p>
 </section>
